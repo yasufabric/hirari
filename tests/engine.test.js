@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   advanceStage,
+  chooseSkill,
   circlesHit,
   createGame,
   createRng,
@@ -16,6 +17,8 @@ import {
   OBSTACLE_SPEED_MIN,
   OBSTACLE_TYPES,
   PLAYER_BASE_SPEED,
+  SKILL_CHOICE_COUNT,
+  SKILLS,
   SPAWN_INTERVAL,
   STAGE_CLEAR_BONUS,
   STAGE_DURATION,
@@ -185,20 +188,20 @@ describe('ステージタイマーとクリア', () => {
     }
   }
 
-  it('20秒生き残るとステージクリアになりボーナス加点', () => {
+  it('20秒生き残るとスキル選択になりボーナス加点', () => {
     const state = playingGame();
     survive(state, STAGE_DURATION - 0.05);
     expect(state.status).toBe('playing');
     const scoreBefore = state.score;
     state.obstacles = [];
     update(state, 0.1);
-    expect(state.status).toBe('stageClear');
+    expect(state.status).toBe('skillSelect');
     expect(state.score).toBe(scoreBefore + STAGE_CLEAR_BONUS);
   });
 
-  it('stageClear 中は時間が進まない', () => {
+  it('skillSelect 中は時間が進まない', () => {
     const state = playingGame();
-    state.status = 'stageClear';
+    state.status = 'skillSelect';
     const t = state.time;
     update(state, 1.0);
     expect(state.time).toBe(t);
@@ -207,7 +210,6 @@ describe('ステージタイマーとクリア', () => {
   it('advanceStage で次ステージが始まり障害物・タイマーがリセットされる', () => {
     const state = playingGame();
     survive(state, STAGE_DURATION + 0.1);
-    expect(state.status).toBe('stageClear');
     spawnObstacle(state); // 残骸があっても
     advanceStage(state);
     expect(state.stage).toBe(2);
@@ -227,6 +229,87 @@ describe('ステージタイマーとクリア', () => {
     o.vy = 0;
     update(state, 0.1);
     expect(state.status).toBe('gameover');
+  });
+});
+
+describe('スキルカード選択', () => {
+  function clearedGame(seed = 1) {
+    const state = playingGame(seed);
+    state.stageTime = STAGE_DURATION; // クリア直前まで進める
+    state.obstacles = [];
+    update(state, 0.001);
+    return state;
+  }
+
+  it('クリア時に重複なしの選択肢が3枚提示される', () => {
+    const state = clearedGame();
+    expect(state.status).toBe('skillSelect');
+    expect(state.skillChoices).toHaveLength(SKILL_CHOICE_COUNT);
+    const ids = state.skillChoices.map((s) => s.id);
+    expect(new Set(ids).size).toBe(SKILL_CHOICE_COUNT);
+    for (const s of state.skillChoices) {
+      expect(SKILLS).toContain(s);
+    }
+  });
+
+  it('chooseSkill で効果が適用され次ステージが始まる', () => {
+    const state = clearedGame();
+    const skill = state.skillChoices[1];
+    chooseSkill(state, 1);
+    expect(state.skills).toEqual([skill.id]);
+    expect(state.skillChoices).toBeNull();
+    expect(state.stage).toBe(2);
+    expect(state.status).toBe('playing');
+  });
+
+  it('範囲外のインデックスでは何も起きない', () => {
+    const state = clearedGame();
+    chooseSkill(state, 5);
+    expect(state.status).toBe('skillSelect');
+    expect(state.stage).toBe(1);
+  });
+
+  it('playing 中に chooseSkill しても何も起きない', () => {
+    const state = playingGame();
+    chooseSkill(state, 0);
+    expect(state.skills).toEqual([]);
+    expect(state.stage).toBe(1);
+  });
+
+  it('speed: 移動速度が1.25倍になる', () => {
+    const state = playingGame();
+    const before = state.player.maxSpeed;
+    SKILLS.find((s) => s.id === 'speed').apply(state);
+    expect(state.player.maxSpeed).toBeCloseTo(before * 1.25);
+  });
+
+  it('guard: 無敵時間が0.5秒延びる', () => {
+    const state = playingGame();
+    const before = state.invincibleDuration;
+    SKILLS.find((s) => s.id === 'guard').apply(state);
+    expect(state.invincibleDuration).toBeCloseTo(before + 0.5);
+  });
+
+  it('slow: 障害物の落下が15%遅くなる', () => {
+    const state = playingGame();
+    SKILLS.find((s) => s.id === 'slow').apply(state);
+    const o = spawnObstacle(state);
+    const y0 = o.y;
+    update(state, 0.1);
+    expect(o.y).toBeCloseTo(y0 + o.vy * 0.85 * 0.1);
+  });
+
+  it('shield: HPの代わりにシールドが1回ダメージを受ける', () => {
+    const state = playingGame();
+    SKILLS.find((s) => s.id === 'shield').apply(state);
+    expect(state.shield).toBe(1);
+    const o = spawnObstacle(state);
+    o.x = state.player.x;
+    o.y = state.player.y;
+    update(state, 0.001);
+    expect(state.shield).toBe(0);
+    expect(state.hp).toBe(MAX_HP); // HPは減らない
+    expect(state.invincibleTimer).toBeGreaterThan(0); // 無敵は付く
   });
 });
 

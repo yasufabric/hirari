@@ -28,6 +28,43 @@ export const OBSTACLE_RADIUS_MAX = 16;
 export const MAX_HP = 3;
 export const STAGE_DURATION = 20; // 秒。生き残ればクリア
 export const STAGE_CLEAR_BONUS = 100;
+export const SKILL_CHOICE_COUNT = 3;
+
+// スキル定義。apply は state を直接変更する。
+export const SKILLS = [
+  {
+    id: 'speed',
+    name: 'かろやかステップ',
+    desc: '移動速度 +25%',
+    apply(state) {
+      state.player.maxSpeed *= 1.25;
+    },
+  },
+  {
+    id: 'guard',
+    name: 'ながもち無敵',
+    desc: '被弾後の無敵時間 +0.5秒',
+    apply(state) {
+      state.invincibleDuration += 0.5;
+    },
+  },
+  {
+    id: 'slow',
+    name: 'ゆっくりおちて',
+    desc: '障害物の落下速度 -15%',
+    apply(state) {
+      state.obstacleSlow *= 0.85;
+    },
+  },
+  {
+    id: 'shield',
+    name: 'まもりのシールド',
+    desc: '1回だけダメージを防ぐ（累積可）',
+    apply(state) {
+      state.shield += 1;
+    },
+  },
+];
 export const INVINCIBLE_DURATION = 1.0; // 被弾後の無敵秒数
 export const HITBOX_FORGIVENESS = 0.8; // 見た目より当たり判定を少し甘くする
 
@@ -57,6 +94,10 @@ export function createGame(seed = 1) {
     stage: 1,
     stageTime: 0,
     stageDuration: STAGE_DURATION,
+    obstacleSlow: 1, // 障害物速度の倍率（スキルで下がる）
+    shield: 0, // 残りシールド数
+    skills: [], // 獲得したスキルidの履歴
+    skillChoices: null, // skillSelect 中の選択肢（SKILLSの要素3つ）
   };
 }
 
@@ -90,11 +131,34 @@ function updateStage(state, dt) {
   state.stageTime += dt;
   if (state.stageTime >= state.stageDuration) {
     state.score += STAGE_CLEAR_BONUS;
-    state.status = 'stageClear';
+    state.status = 'skillSelect';
+    state.skillChoices = pickSkillChoices(state);
   }
 }
 
-// 次のステージを開始する（クリア画面から呼ぶ）
+// SKILLS から重複なしで3枚引く
+export function pickSkillChoices(state) {
+  const pool = [...SKILLS];
+  const choices = [];
+  while (choices.length < SKILL_CHOICE_COUNT && pool.length > 0) {
+    const i = Math.floor(state.rng() * pool.length);
+    choices.push(pool.splice(i, 1)[0]);
+  }
+  return choices;
+}
+
+// skillSelect 中にカードを選ぶ。効果を適用して次ステージへ。
+export function chooseSkill(state, index) {
+  if (state.status !== 'skillSelect' || !state.skillChoices) return state;
+  const skill = state.skillChoices[index];
+  if (!skill) return state;
+  skill.apply(state);
+  state.skills.push(skill.id);
+  state.skillChoices = null;
+  return advanceStage(state);
+}
+
+// 次のステージを開始する（スキル選択後に呼ぶ）
 export function advanceStage(state) {
   state.stage += 1;
   state.stageTime = 0;
@@ -116,8 +180,12 @@ function handleCollisions(state) {
   const hitIndex = state.obstacles.findIndex((o) => circlesHit(p, o));
   if (hitIndex === -1) return;
   state.obstacles.splice(hitIndex, 1);
-  state.hp -= 1;
   state.invincibleTimer = state.invincibleDuration;
+  if (state.shield > 0) {
+    state.shield -= 1;
+    return;
+  }
+  state.hp -= 1;
   if (state.hp <= 0) {
     state.hp = 0;
     state.status = 'gameover';
@@ -152,7 +220,7 @@ export function spawnObstacle(state) {
 function updateObstacles(state, dt) {
   const bottom = state.world.height;
   for (const o of state.obstacles) {
-    o.y += o.vy * dt;
+    o.y += o.vy * state.obstacleSlow * dt;
     o.angle += o.spin * dt;
   }
   // 画面下に抜けたものは「避けた」としてスコア加算して除去

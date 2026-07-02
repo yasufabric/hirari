@@ -1,13 +1,13 @@
 // main.js — ゲームループ＋入力処理。engine と renderer を繋ぐ唯一の場所。
 import {
-  advanceStage,
+  chooseSkill,
   createGame,
   setPlayerTarget,
   startGame,
   update,
   WORLD,
 } from './engine.js';
-import { render } from './renderer.js';
+import { render, skillCardRects } from './renderer.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -70,8 +70,12 @@ canvas.addEventListener('pointerdown', (e) => {
     startGame(state);
     return;
   }
-  if (state.status === 'stageClear') {
-    advanceStage(state);
+  if (state.status === 'skillSelect') {
+    const rects = skillCardRects(state.world);
+    const i = rects.findIndex(
+      (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h,
+    );
+    if (i !== -1) chooseSkill(state, i);
     return;
   }
   if (state.status === 'playing') {

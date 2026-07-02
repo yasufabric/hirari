@@ -34,9 +34,19 @@ export function render(ctx, state) {
 
   if (state.status === 'gameover') {
     drawGameOver(ctx, state);
-  } else if (state.status === 'stageClear') {
-    drawStageClear(ctx, state);
+  } else if (state.status === 'skillSelect') {
+    drawSkillSelect(ctx, state);
   }
+}
+
+// スキルカードの矩形（論理座標）。main.js のヒットテストでも使う。
+export function skillCardRects(world) {
+  const w = 300;
+  const h = 100;
+  const gap = 22;
+  const x = (world.width - w) / 2;
+  const startY = 170;
+  return [0, 1, 2].map((i) => ({ x, y: startY + i * (h + gap), w, h }));
 }
 
 function drawHud(ctx, state) {
@@ -48,6 +58,26 @@ function drawHud(ctx, state) {
     drawHeart(ctx, 11);
     ctx.restore();
   }
+  // シールド（ハートの下に小さな盾マーク）
+  for (let i = 0; i < state.shield; i++) {
+    ctx.save();
+    ctx.translate(20 + i * 18, 50);
+    ctx.fillStyle = '#8fc7ff';
+    ctx.strokeStyle = '#4a8fd6';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(6, -3);
+    ctx.lineTo(6, 2);
+    ctx.quadraticCurveTo(6, 7, 0, 9);
+    ctx.quadraticCurveTo(-6, 7, -6, 2);
+    ctx.lineTo(-6, -3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // スコア（右上）
   ctx.save();
   ctx.textAlign = 'right';
@@ -68,19 +98,51 @@ function drawHud(ctx, state) {
   ctx.restore();
 }
 
-function drawStageClear(ctx, state) {
+function drawSkillSelect(ctx, state) {
   const { width, height } = state.world;
   ctx.save();
-  ctx.fillStyle = 'rgba(255, 217, 236, 0.85)';
+  ctx.fillStyle = 'rgba(255, 217, 236, 0.9)';
   ctx.fillRect(0, 0, width, height);
+
   ctx.textAlign = 'center';
   ctx.fillStyle = '#e05a8a';
-  ctx.font = 'bold 36px sans-serif';
-  ctx.fillText(`ステージ ${state.stage} クリア！`, width / 2, height / 2 - 40);
+  ctx.font = 'bold 30px sans-serif';
+  ctx.fillText(`ステージ ${state.stage} クリア！`, width / 2, 80);
   ctx.fillStyle = '#7a6a8a';
   ctx.font = '16px sans-serif';
-  ctx.fillText('タップで次のステージへ', width / 2, height / 2 + 20);
+  ctx.fillText('スキルをひとつ選んでね', width / 2, 115);
+
+  const rects = skillCardRects(state.world);
+  const choices = state.skillChoices ?? [];
+  choices.forEach((skill, i) => {
+    const rect = rects[i];
+    if (!rect) return;
+    // カード本体
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#ff8fb3';
+    ctx.lineWidth = 3;
+    roundRect(ctx, rect.x, rect.y, rect.w, rect.h, 14);
+    ctx.fill();
+    ctx.stroke();
+    // テキスト
+    ctx.fillStyle = '#e05a8a';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(skill.name, width / 2, rect.y + 42);
+    ctx.fillStyle = '#7a6a8a';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(skill.desc, width / 2, rect.y + 72);
+  });
   ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
 }
 
 function drawGameOver(ctx, state) {

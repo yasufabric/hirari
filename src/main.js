@@ -58,6 +58,11 @@ canvas.addEventListener('pointerdown', (e) => {
     startGame(state);
     return;
   }
+  if (state.status === 'gameover') {
+    state = createGame(Date.now() >>> 0);
+    startGame(state);
+    return;
+  }
   if (state.status === 'playing') {
     dragging = true;
     setPlayerTarget(state, p.x, p.y);

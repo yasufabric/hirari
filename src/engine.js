@@ -25,6 +25,10 @@ export const OBSTACLE_SPEED_MAX = 220;
 export const OBSTACLE_RADIUS_MIN = 10;
 export const OBSTACLE_RADIUS_MAX = 16;
 
+export const MAX_HP = 3;
+export const INVINCIBLE_DURATION = 1.0; // 被弾後の無敵秒数
+export const HITBOX_FORGIVENESS = 0.8; // 見た目より当たり判定を少し甘くする
+
 export function createGame(seed = 1) {
   const px = WORLD.width / 2;
   const py = WORLD.height * 0.8;
@@ -44,6 +48,10 @@ export function createGame(seed = 1) {
     obstacles: [],
     spawnTimer: SPAWN_INTERVAL,
     score: 0,
+    hp: MAX_HP,
+    maxHp: MAX_HP,
+    invincibleTimer: 0,
+    invincibleDuration: INVINCIBLE_DURATION,
   };
 }
 
@@ -63,10 +71,31 @@ export function setPlayerTarget(state, x, y) {
 export function update(state, dt) {
   if (state.status !== 'playing') return state;
   state.time += dt;
+  state.invincibleTimer = Math.max(0, state.invincibleTimer - dt);
   updatePlayer(state, dt);
   updateSpawner(state, dt);
   updateObstacles(state, dt);
+  handleCollisions(state);
   return state;
+}
+
+export function circlesHit(a, b, forgiveness = HITBOX_FORGIVENESS) {
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  return dist < (a.r + b.r) * forgiveness;
+}
+
+function handleCollisions(state) {
+  if (state.invincibleTimer > 0) return;
+  const p = state.player;
+  const hitIndex = state.obstacles.findIndex((o) => circlesHit(p, o));
+  if (hitIndex === -1) return;
+  state.obstacles.splice(hitIndex, 1);
+  state.hp -= 1;
+  state.invincibleTimer = state.invincibleDuration;
+  if (state.hp <= 0) {
+    state.hp = 0;
+    state.status = 'gameover';
+  }
 }
 
 function updateSpawner(state, dt) {

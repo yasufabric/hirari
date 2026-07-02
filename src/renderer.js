@@ -22,7 +22,54 @@ export function render(ctx, state) {
   for (const o of state.obstacles) {
     drawObstacle(ctx, o);
   }
-  drawPlayer(ctx, state.player);
+
+  // 無敵中は点滅させる
+  const flashing =
+    state.invincibleTimer > 0 && Math.floor(state.time * 12) % 2 === 0;
+  if (!flashing) {
+    drawPlayer(ctx, state.player);
+  }
+
+  drawHud(ctx, state);
+
+  if (state.status === 'gameover') {
+    drawGameOver(ctx, state);
+  }
+}
+
+function drawHud(ctx, state) {
+  // HPハート（左上）
+  for (let i = 0; i < state.maxHp; i++) {
+    ctx.save();
+    ctx.translate(24 + i * 30, 26);
+    ctx.globalAlpha = i < state.hp ? 1 : 0.25;
+    drawHeart(ctx, 11);
+    ctx.restore();
+  }
+  // スコア（右上）
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#7a6a8a';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText(`SCORE ${state.score}`, state.world.width - 14, 32);
+  ctx.restore();
+}
+
+function drawGameOver(ctx, state) {
+  const { width, height } = state.world;
+  ctx.save();
+  ctx.fillStyle = 'rgba(42, 36, 56, 0.7)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 40px sans-serif';
+  ctx.fillText('ゲームオーバー', width / 2, height / 2 - 40);
+  ctx.font = '20px sans-serif';
+  ctx.fillText(`スコア: ${state.score}`, width / 2, height / 2 + 10);
+  ctx.fillStyle = '#ffd9ec';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('タップでもう一度', width / 2, height / 2 + 60);
+  ctx.restore();
 }
 
 function drawObstacle(ctx, o) {

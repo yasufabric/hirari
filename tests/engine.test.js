@@ -1,11 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
+  circlesHit,
   createGame,
   createRng,
   setPlayerTarget,
   spawnObstacle,
   startGame,
   update,
+  INVINCIBLE_DURATION,
+  MAX_HP,
   OBSTACLE_RADIUS_MAX,
   OBSTACLE_RADIUS_MIN,
   OBSTACLE_SPEED_MAX,
@@ -97,6 +100,73 @@ describe('プレイヤー移動', () => {
     update(state, 1.0);
     expect(state.player.x).toBe(x);
     expect(state.player.y).toBe(y);
+  });
+});
+
+describe('衝突判定とHP', () => {
+  // プレイヤーの真上に障害物を重ねて置くヘルパー
+  function placeObstacleOnPlayer(state) {
+    const o = spawnObstacle(state);
+    o.x = state.player.x;
+    o.y = state.player.y;
+    return o;
+  }
+
+  it('circlesHit は距離が (r+r)*係数 未満で当たり', () => {
+    const a = { x: 0, y: 0, r: 10 };
+    const b = { x: 15, y: 0, r: 10 };
+    expect(circlesHit(a, b)).toBe(true); // 15 < 20*0.8=16
+    b.x = 17;
+    expect(circlesHit(a, b)).toBe(false);
+  });
+
+  it('被弾するとHPが1減り、障害物が消え、無敵になる', () => {
+    const state = playingGame();
+    placeObstacleOnPlayer(state);
+    update(state, 0.001);
+    expect(state.hp).toBe(MAX_HP - 1);
+    expect(state.obstacles).toHaveLength(0);
+    expect(state.invincibleTimer).toBeGreaterThan(0);
+  });
+
+  it('無敵中は多重ヒットしない', () => {
+    const state = playingGame();
+    placeObstacleOnPlayer(state);
+    update(state, 0.001); // 1発目
+    placeObstacleOnPlayer(state);
+    update(state, 0.001); // 無敵中
+    expect(state.hp).toBe(MAX_HP - 1);
+    expect(state.obstacles).toHaveLength(1); // 消えずに残る
+  });
+
+  it('無敵時間が切れたら再び被弾する', () => {
+    const state = playingGame();
+    placeObstacleOnPlayer(state);
+    update(state, 0.001);
+    // 無敵時間を経過させる（障害物が落ちて行くので毎回重ね直す）
+    update(state, INVINCIBLE_DURATION + 0.01);
+    placeObstacleOnPlayer(state);
+    update(state, 0.001);
+    expect(state.hp).toBe(MAX_HP - 2);
+  });
+
+  it('HPが0になるとゲームオーバー', () => {
+    const state = playingGame();
+    for (let i = 0; i < MAX_HP; i++) {
+      state.invincibleTimer = 0;
+      placeObstacleOnPlayer(state);
+      update(state, 0.001);
+    }
+    expect(state.hp).toBe(0);
+    expect(state.status).toBe('gameover');
+  });
+
+  it('ゲームオーバー後は update しても何も進まない', () => {
+    const state = playingGame();
+    state.status = 'gameover';
+    const t = state.time;
+    update(state, 1.0);
+    expect(state.time).toBe(t);
   });
 });
 

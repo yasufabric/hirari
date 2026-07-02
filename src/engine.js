@@ -19,11 +19,25 @@ export const PLAYER_RADIUS = 16;
 export const PLAYER_BASE_SPEED = 340; // px/秒
 
 export const OBSTACLE_TYPES = ['star', 'heart', 'bubble'];
-export const SPAWN_INTERVAL = 0.8; // 秒
-export const OBSTACLE_SPEED_MIN = 120; // px/秒
+export const SPAWN_INTERVAL = 0.8; // 秒（ステージ1の基準値）
+export const SPAWN_INTERVAL_MIN = 0.22; // これ以上は速くならない
+export const OBSTACLE_SPEED_MIN = 120; // px/秒（ステージ1の基準値）
 export const OBSTACLE_SPEED_MAX = 220;
 export const OBSTACLE_RADIUS_MIN = 10;
 export const OBSTACLE_RADIUS_MAX = 16;
+
+// ステージごとの難易度。ステージが上がるほど間隔が短く・速くなる。
+export function stageConfig(stage) {
+  const n = stage - 1;
+  return {
+    spawnInterval: Math.max(
+      SPAWN_INTERVAL_MIN,
+      SPAWN_INTERVAL * Math.pow(0.88, n),
+    ),
+    speedMin: OBSTACLE_SPEED_MIN + n * 18,
+    speedMax: OBSTACLE_SPEED_MAX + n * 26,
+  };
+}
 
 export const MAX_HP = 3;
 export const STAGE_DURATION = 20; // 秒。生き残ればクリア
@@ -163,7 +177,7 @@ export function advanceStage(state) {
   state.stage += 1;
   state.stageTime = 0;
   state.obstacles = [];
-  state.spawnTimer = SPAWN_INTERVAL;
+  state.spawnTimer = stageConfig(state.stage).spawnInterval;
   state.invincibleTimer = 0;
   state.status = 'playing';
   return state;
@@ -193,15 +207,17 @@ function handleCollisions(state) {
 }
 
 function updateSpawner(state, dt) {
+  const { spawnInterval } = stageConfig(state.stage);
   state.spawnTimer -= dt;
   while (state.spawnTimer <= 0) {
     spawnObstacle(state);
-    state.spawnTimer += SPAWN_INTERVAL;
+    state.spawnTimer += spawnInterval;
   }
 }
 
 export function spawnObstacle(state) {
   const rng = state.rng;
+  const { speedMin, speedMax } = stageConfig(state.stage);
   const r =
     OBSTACLE_RADIUS_MIN + rng() * (OBSTACLE_RADIUS_MAX - OBSTACLE_RADIUS_MIN);
   const obstacle = {
@@ -209,7 +225,7 @@ export function spawnObstacle(state) {
     x: r + rng() * (state.world.width - r * 2),
     y: -r,
     r,
-    vy: OBSTACLE_SPEED_MIN + rng() * (OBSTACLE_SPEED_MAX - OBSTACLE_SPEED_MIN),
+    vy: speedMin + rng() * (speedMax - speedMin),
     spin: (rng() - 0.5) * 4, // 描画用の回転速度 rad/秒
     angle: 0,
   };

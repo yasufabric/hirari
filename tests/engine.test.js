@@ -7,6 +7,7 @@ import {
   createRng,
   setPlayerTarget,
   spawnObstacle,
+  stageConfig,
   startGame,
   update,
   INVINCIBLE_DURATION,
@@ -20,6 +21,7 @@ import {
   SKILL_CHOICE_COUNT,
   SKILLS,
   SPAWN_INTERVAL,
+  SPAWN_INTERVAL_MIN,
   STAGE_CLEAR_BONUS,
   STAGE_DURATION,
   WORLD,
@@ -310,6 +312,59 @@ describe('スキルカード選択', () => {
     expect(state.shield).toBe(0);
     expect(state.hp).toBe(MAX_HP); // HPは減らない
     expect(state.invincibleTimer).toBeGreaterThan(0); // 無敵は付く
+  });
+});
+
+describe('難易度スケーリング', () => {
+  it('ステージが上がるとスポーン間隔が短くなる（下限あり）', () => {
+    let prev = stageConfig(1).spawnInterval;
+    expect(prev).toBe(SPAWN_INTERVAL);
+    for (let stage = 2; stage <= 30; stage++) {
+      const cur = stageConfig(stage).spawnInterval;
+      expect(cur).toBeLessThanOrEqual(prev);
+      expect(cur).toBeGreaterThanOrEqual(SPAWN_INTERVAL_MIN);
+      prev = cur;
+    }
+    expect(stageConfig(30).spawnInterval).toBe(SPAWN_INTERVAL_MIN);
+  });
+
+  it('ステージが上がると障害物が速くなる', () => {
+    for (let stage = 2; stage <= 10; stage++) {
+      const prev = stageConfig(stage - 1);
+      const cur = stageConfig(stage);
+      expect(cur.speedMin).toBeGreaterThan(prev.speedMin);
+      expect(cur.speedMax).toBeGreaterThan(prev.speedMax);
+    }
+  });
+
+  it('スポーンされる障害物の速度はそのステージの範囲内', () => {
+    const state = playingGame(7);
+    state.stage = 5;
+    const { speedMin, speedMax } = stageConfig(5);
+    for (let i = 0; i < 30; i++) {
+      const o = spawnObstacle(state);
+      expect(o.vy).toBeGreaterThanOrEqual(speedMin);
+      expect(o.vy).toBeLessThanOrEqual(speedMax);
+    }
+  });
+
+  it('高ステージではステージ1より多くスポーンする', () => {
+    // 5秒ぶん進めて実スポーン数を数える（クリア・ゲームオーバーは起こさない）
+    const spawned = (stage) => {
+      const state = playingGame(42);
+      state.stage = stage;
+      state.spawnTimer = stageConfig(stage).spawnInterval;
+      let n = 0;
+      for (let i = 0; i < 100; i++) {
+        const before = state.obstacles.length;
+        state.stageTime = 0;
+        state.hp = MAX_HP;
+        update(state, 0.05);
+        n += Math.max(0, state.obstacles.length - before);
+      }
+      return n;
+    };
+    expect(spawned(10)).toBeGreaterThan(spawned(1));
   });
 });
 

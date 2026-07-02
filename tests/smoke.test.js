@@ -18,5 +18,19 @@ test('ページが読み込めてゲームが起動する', async ({ page }) => 
   await canvas.tap();
   await page.waitForFunction(() => window.__game?.state?.status === 'playing');
 
+  // ドラッグでひらりちゃんが動く
+  const before = await page.evaluate(() => window.__game.state.player.x);
+  const box = await canvas.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height * 0.8);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.15, box.y + box.height * 0.8, {
+    steps: 10,
+  });
+  await page.mouse.up();
+  await page.waitForFunction(
+    (x0) => Math.abs(window.__game.state.player.x - x0) > 20,
+    before,
+  );
+
   expect(errors).toEqual([]);
 });

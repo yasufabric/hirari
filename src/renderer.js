@@ -19,7 +19,69 @@ export function render(ctx, state) {
     return;
   }
 
+  for (const o of state.obstacles) {
+    drawObstacle(ctx, o);
+  }
   drawPlayer(ctx, state.player);
+}
+
+function drawObstacle(ctx, o) {
+  ctx.save();
+  ctx.translate(o.x, o.y);
+  ctx.rotate(o.angle);
+  if (o.type === 'star') {
+    drawStar(ctx, o.r);
+  } else if (o.type === 'heart') {
+    drawHeart(ctx, o.r);
+  } else {
+    drawBubble(ctx, o.r);
+  }
+  ctx.restore();
+}
+
+function drawStar(ctx, r) {
+  ctx.fillStyle = '#ffd24a';
+  ctx.strokeStyle = '#f0a828';
+  ctx.lineWidth = r * 0.12;
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const outer = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const inner = outer + Math.PI / 5;
+    const method = i === 0 ? 'moveTo' : 'lineTo';
+    ctx[method](Math.cos(outer) * r, Math.sin(outer) * r);
+    ctx.lineTo(Math.cos(inner) * r * 0.45, Math.sin(inner) * r * 0.45);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawHeart(ctx, r) {
+  ctx.fillStyle = '#ff6f9c';
+  ctx.strokeStyle = '#e0487a';
+  ctx.lineWidth = r * 0.12;
+  ctx.beginPath();
+  ctx.moveTo(0, r * 0.9);
+  ctx.bezierCurveTo(-r * 1.2, r * 0.1, -r * 0.7, -r * 0.9, 0, -r * 0.3);
+  ctx.bezierCurveTo(r * 0.7, -r * 0.9, r * 1.2, r * 0.1, 0, r * 0.9);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawBubble(ctx, r) {
+  ctx.fillStyle = 'rgba(150, 210, 255, 0.55)';
+  ctx.strokeStyle = 'rgba(90, 160, 230, 0.9)';
+  ctx.lineWidth = r * 0.1;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // ハイライト
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+  ctx.beginPath();
+  ctx.arc(-r * 0.35, -r * 0.35, r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // ひらりちゃん（小さな女の子）。r を基準にパーツを配置する。

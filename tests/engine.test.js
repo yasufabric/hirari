@@ -3,9 +3,16 @@ import {
   createGame,
   createRng,
   setPlayerTarget,
+  spawnObstacle,
   startGame,
   update,
+  OBSTACLE_RADIUS_MAX,
+  OBSTACLE_RADIUS_MIN,
+  OBSTACLE_SPEED_MAX,
+  OBSTACLE_SPEED_MIN,
+  OBSTACLE_TYPES,
   PLAYER_BASE_SPEED,
+  SPAWN_INTERVAL,
   WORLD,
 } from '../src/engine.js';
 
@@ -90,5 +97,49 @@ describe('プレイヤー移動', () => {
     update(state, 1.0);
     expect(state.player.x).toBe(x);
     expect(state.player.y).toBe(y);
+  });
+});
+
+describe('障害物スポーン', () => {
+  it('SPAWN_INTERVAL 経過ごとに1個スポーンする', () => {
+    const state = playingGame();
+    update(state, SPAWN_INTERVAL - 0.01);
+    expect(state.obstacles).toHaveLength(0);
+    update(state, 0.02);
+    expect(state.obstacles).toHaveLength(1);
+    update(state, SPAWN_INTERVAL);
+    expect(state.obstacles).toHaveLength(2);
+  });
+
+  it('スポーンした障害物は画面上端の外・画面幅内・種類は既知のもの', () => {
+    const state = playingGame(123);
+    for (let i = 0; i < 50; i++) spawnObstacle(state);
+    for (const o of state.obstacles) {
+      expect(o.y).toBeLessThan(0);
+      expect(o.x - o.r).toBeGreaterThanOrEqual(0);
+      expect(o.x + o.r).toBeLessThanOrEqual(WORLD.width);
+      expect(OBSTACLE_TYPES).toContain(o.type);
+      expect(o.vy).toBeGreaterThanOrEqual(OBSTACLE_SPEED_MIN);
+      expect(o.vy).toBeLessThanOrEqual(OBSTACLE_SPEED_MAX);
+      expect(o.r).toBeGreaterThanOrEqual(OBSTACLE_RADIUS_MIN);
+      expect(o.r).toBeLessThanOrEqual(OBSTACLE_RADIUS_MAX);
+    }
+  });
+
+  it('障害物は vy に従って落下する', () => {
+    const state = playingGame();
+    const o = spawnObstacle(state);
+    const y0 = o.y;
+    update(state, 0.1);
+    expect(o.y).toBeCloseTo(y0 + o.vy * 0.1);
+  });
+
+  it('画面下に抜けたら除去されスコアが増える', () => {
+    const state = playingGame();
+    const o = spawnObstacle(state);
+    o.y = WORLD.height + o.r + 1; // 画面外に置く
+    update(state, 0.001);
+    expect(state.obstacles).not.toContain(o);
+    expect(state.score).toBe(1);
   });
 });

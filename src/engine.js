@@ -18,6 +18,13 @@ export function createRng(seed = 1) {
 export const PLAYER_RADIUS = 16;
 export const PLAYER_BASE_SPEED = 340; // px/秒
 
+export const OBSTACLE_TYPES = ['star', 'heart', 'bubble'];
+export const SPAWN_INTERVAL = 0.8; // 秒
+export const OBSTACLE_SPEED_MIN = 120; // px/秒
+export const OBSTACLE_SPEED_MAX = 220;
+export const OBSTACLE_RADIUS_MIN = 10;
+export const OBSTACLE_RADIUS_MAX = 16;
+
 export function createGame(seed = 1) {
   const px = WORLD.width / 2;
   const py = WORLD.height * 0.8;
@@ -34,6 +41,9 @@ export function createGame(seed = 1) {
       targetY: py,
       maxSpeed: PLAYER_BASE_SPEED,
     },
+    obstacles: [],
+    spawnTimer: SPAWN_INTERVAL,
+    score: 0,
   };
 }
 
@@ -54,7 +64,46 @@ export function update(state, dt) {
   if (state.status !== 'playing') return state;
   state.time += dt;
   updatePlayer(state, dt);
+  updateSpawner(state, dt);
+  updateObstacles(state, dt);
   return state;
+}
+
+function updateSpawner(state, dt) {
+  state.spawnTimer -= dt;
+  while (state.spawnTimer <= 0) {
+    spawnObstacle(state);
+    state.spawnTimer += SPAWN_INTERVAL;
+  }
+}
+
+export function spawnObstacle(state) {
+  const rng = state.rng;
+  const r =
+    OBSTACLE_RADIUS_MIN + rng() * (OBSTACLE_RADIUS_MAX - OBSTACLE_RADIUS_MIN);
+  const obstacle = {
+    type: OBSTACLE_TYPES[Math.floor(rng() * OBSTACLE_TYPES.length)],
+    x: r + rng() * (state.world.width - r * 2),
+    y: -r,
+    r,
+    vy: OBSTACLE_SPEED_MIN + rng() * (OBSTACLE_SPEED_MAX - OBSTACLE_SPEED_MIN),
+    spin: (rng() - 0.5) * 4, // 描画用の回転速度 rad/秒
+    angle: 0,
+  };
+  state.obstacles.push(obstacle);
+  return obstacle;
+}
+
+function updateObstacles(state, dt) {
+  const bottom = state.world.height;
+  for (const o of state.obstacles) {
+    o.y += o.vy * dt;
+    o.angle += o.spin * dt;
+  }
+  // 画面下に抜けたものは「避けた」としてスコア加算して除去
+  const before = state.obstacles.length;
+  state.obstacles = state.obstacles.filter((o) => o.y - o.r <= bottom);
+  state.score += before - state.obstacles.length;
 }
 
 function updatePlayer(state, dt) {

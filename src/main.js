@@ -1,5 +1,5 @@
 // main.js — ゲームループ＋入力処理。engine と renderer を繋ぐ唯一の場所。
-import { createGame, startGame, update, WORLD } from './engine.js';
+import { createGame, setPlayerTarget, startGame, update, WORLD } from './engine.js';
 import { render } from './renderer.js';
 
 const canvas = document.getElementById('game');
@@ -48,6 +48,8 @@ function toWorld(clientX, clientY) {
 }
 
 // ---- 入力（Pointer Events） ----
+let dragging = false;
+
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   canvas.setPointerCapture(e.pointerId);
@@ -56,14 +58,26 @@ canvas.addEventListener('pointerdown', (e) => {
     startGame(state);
     return;
   }
+  if (state.status === 'playing') {
+    dragging = true;
+    setPlayerTarget(state, p.x, p.y);
+  }
 });
 
 canvas.addEventListener('pointermove', (e) => {
   e.preventDefault();
+  if (!dragging || state.status !== 'playing') return;
+  const p = toWorld(e.clientX, e.clientY);
+  setPlayerTarget(state, p.x, p.y);
 });
 
 canvas.addEventListener('pointerup', (e) => {
   e.preventDefault();
+  dragging = false;
+});
+
+canvas.addEventListener('pointercancel', () => {
+  dragging = false;
 });
 
 // ---- ゲームループ ----

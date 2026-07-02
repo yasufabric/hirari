@@ -16,7 +16,74 @@ export function render(ctx, state) {
 
   if (state.status === 'title') {
     drawTitle(ctx, state);
+    return;
   }
+
+  drawPlayer(ctx, state.player);
+}
+
+// ひらりちゃん（小さな女の子）。r を基準にパーツを配置する。
+function drawPlayer(ctx, p) {
+  const { x, y, r } = p;
+  ctx.save();
+  ctx.translate(x, y);
+  const s = r / 16; // 基準サイズ16pxからのスケール
+
+  // ワンピース（スカート）
+  ctx.fillStyle = '#ff8fb3';
+  ctx.beginPath();
+  ctx.moveTo(0, 2 * s);
+  ctx.lineTo(-11 * s, 15 * s);
+  ctx.quadraticCurveTo(0, 19 * s, 11 * s, 15 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  // 顔
+  ctx.fillStyle = '#ffe8d6';
+  ctx.beginPath();
+  ctx.arc(0, -4 * s, 9 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 髪（前髪＋サイド）
+  ctx.fillStyle = '#8a5a3b';
+  ctx.beginPath();
+  ctx.arc(0, -6 * s, 9.5 * s, Math.PI * 0.95, Math.PI * 2.05);
+  ctx.quadraticCurveTo(11 * s, 2 * s, 8 * s, 6 * s);
+  ctx.quadraticCurveTo(9 * s, -2 * s, 5 * s, -3 * s);
+  ctx.quadraticCurveTo(0, -1 * s, -5 * s, -3 * s);
+  ctx.quadraticCurveTo(-9 * s, -2 * s, -8 * s, 6 * s);
+  ctx.quadraticCurveTo(-11 * s, 2 * s, -9.5 * s, -6 * s);
+  ctx.closePath();
+  ctx.fill();
+
+  // リボン
+  ctx.fillStyle = '#ff4f8b';
+  ctx.beginPath();
+  ctx.arc(6 * s, -12 * s, 2.5 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 目
+  ctx.fillStyle = '#3a2a2a';
+  ctx.beginPath();
+  ctx.arc(-3 * s, -4 * s, 1.3 * s, 0, Math.PI * 2);
+  ctx.arc(3 * s, -4 * s, 1.3 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ほっぺ
+  ctx.fillStyle = 'rgba(255, 130, 160, 0.5)';
+  ctx.beginPath();
+  ctx.arc(-5.5 * s, -1.5 * s, 1.6 * s, 0, Math.PI * 2);
+  ctx.arc(5.5 * s, -1.5 * s, 1.6 * s, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 口
+  ctx.strokeStyle = '#c96a6a';
+  ctx.lineWidth = 1 * s;
+  ctx.beginPath();
+  ctx.arc(0, -1.5 * s, 1.8 * s, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 function drawTitle(ctx, state) {

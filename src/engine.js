@@ -26,6 +26,8 @@ export const OBSTACLE_RADIUS_MIN = 10;
 export const OBSTACLE_RADIUS_MAX = 16;
 
 export const MAX_HP = 3;
+export const STAGE_DURATION = 20; // 秒。生き残ればクリア
+export const STAGE_CLEAR_BONUS = 100;
 export const INVINCIBLE_DURATION = 1.0; // 被弾後の無敵秒数
 export const HITBOX_FORGIVENESS = 0.8; // 見た目より当たり判定を少し甘くする
 
@@ -52,6 +54,9 @@ export function createGame(seed = 1) {
     maxHp: MAX_HP,
     invincibleTimer: 0,
     invincibleDuration: INVINCIBLE_DURATION,
+    stage: 1,
+    stageTime: 0,
+    stageDuration: STAGE_DURATION,
   };
 }
 
@@ -76,6 +81,27 @@ export function update(state, dt) {
   updateSpawner(state, dt);
   updateObstacles(state, dt);
   handleCollisions(state);
+  updateStage(state, dt);
+  return state;
+}
+
+function updateStage(state, dt) {
+  if (state.status !== 'playing') return; // 直前の被弾でgameoverになっていたら進めない
+  state.stageTime += dt;
+  if (state.stageTime >= state.stageDuration) {
+    state.score += STAGE_CLEAR_BONUS;
+    state.status = 'stageClear';
+  }
+}
+
+// 次のステージを開始する（クリア画面から呼ぶ）
+export function advanceStage(state) {
+  state.stage += 1;
+  state.stageTime = 0;
+  state.obstacles = [];
+  state.spawnTimer = SPAWN_INTERVAL;
+  state.invincibleTimer = 0;
+  state.status = 'playing';
   return state;
 }
 

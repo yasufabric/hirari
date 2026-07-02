@@ -1,5 +1,12 @@
 // main.js — ゲームループ＋入力処理。engine と renderer を繋ぐ唯一の場所。
-import { createGame, setPlayerTarget, startGame, update, WORLD } from './engine.js';
+import {
+  advanceStage,
+  createGame,
+  setPlayerTarget,
+  startGame,
+  update,
+  WORLD,
+} from './engine.js';
 import { render } from './renderer.js';
 
 const canvas = document.getElementById('game');
@@ -61,6 +68,10 @@ canvas.addEventListener('pointerdown', (e) => {
   if (state.status === 'gameover') {
     state = createGame(Date.now() >>> 0);
     startGame(state);
+    return;
+  }
+  if (state.status === 'stageClear') {
+    advanceStage(state);
     return;
   }
   if (state.status === 'playing') {

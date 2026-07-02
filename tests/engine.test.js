@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  advanceStage,
   circlesHit,
   createGame,
   createRng,
@@ -16,6 +17,8 @@ import {
   OBSTACLE_TYPES,
   PLAYER_BASE_SPEED,
   SPAWN_INTERVAL,
+  STAGE_CLEAR_BONUS,
+  STAGE_DURATION,
   WORLD,
 } from '../src/engine.js';
 
@@ -167,6 +170,63 @@ describe('衝突判定とHP', () => {
     const t = state.time;
     update(state, 1.0);
     expect(state.time).toBe(t);
+  });
+});
+
+describe('ステージタイマーとクリア', () => {
+  // 障害物に当たらないよう毎フレーム掃除しながら、合計ちょうど seconds だけ進める
+  function survive(state, seconds, step = 0.1) {
+    let remaining = seconds;
+    while (remaining > 0) {
+      const dt = Math.min(step, remaining);
+      state.obstacles = [];
+      update(state, dt);
+      remaining -= dt;
+    }
+  }
+
+  it('20秒生き残るとステージクリアになりボーナス加点', () => {
+    const state = playingGame();
+    survive(state, STAGE_DURATION - 0.05);
+    expect(state.status).toBe('playing');
+    const scoreBefore = state.score;
+    state.obstacles = [];
+    update(state, 0.1);
+    expect(state.status).toBe('stageClear');
+    expect(state.score).toBe(scoreBefore + STAGE_CLEAR_BONUS);
+  });
+
+  it('stageClear 中は時間が進まない', () => {
+    const state = playingGame();
+    state.status = 'stageClear';
+    const t = state.time;
+    update(state, 1.0);
+    expect(state.time).toBe(t);
+  });
+
+  it('advanceStage で次ステージが始まり障害物・タイマーがリセットされる', () => {
+    const state = playingGame();
+    survive(state, STAGE_DURATION + 0.1);
+    expect(state.status).toBe('stageClear');
+    spawnObstacle(state); // 残骸があっても
+    advanceStage(state);
+    expect(state.stage).toBe(2);
+    expect(state.stageTime).toBe(0);
+    expect(state.obstacles).toHaveLength(0);
+    expect(state.status).toBe('playing');
+  });
+
+  it('クリアと同フレームで被弾してHP0ならgameoverが優先される', () => {
+    const state = playingGame();
+    survive(state, STAGE_DURATION - 0.05);
+    state.hp = 1;
+    state.invincibleTimer = 0;
+    const o = spawnObstacle(state);
+    o.x = state.player.x;
+    o.y = state.player.y;
+    o.vy = 0;
+    update(state, 0.1);
+    expect(state.status).toBe('gameover');
   });
 });
 

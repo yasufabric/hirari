@@ -34,6 +34,8 @@ export function render(ctx, state) {
 
   if (state.status === 'gameover') {
     drawGameOver(ctx, state);
+  } else if (state.status === 'stageClear') {
+    drawStageClear(ctx, state);
   }
 }
 
@@ -52,6 +54,32 @@ function drawHud(ctx, state) {
   ctx.fillStyle = '#7a6a8a';
   ctx.font = 'bold 16px sans-serif';
   ctx.fillText(`SCORE ${state.score}`, state.world.width - 14, 32);
+
+  // ステージ番号（中央上）＋残り時間バー
+  ctx.textAlign = 'center';
+  ctx.fillText(`STAGE ${state.stage}`, state.world.width / 2, 32);
+  const barW = 120;
+  const barX = (state.world.width - barW) / 2;
+  const remain = Math.max(0, 1 - state.stageTime / state.stageDuration);
+  ctx.fillStyle = 'rgba(122, 106, 138, 0.25)';
+  ctx.fillRect(barX, 40, barW, 6);
+  ctx.fillStyle = '#e05a8a';
+  ctx.fillRect(barX, 40, barW * remain, 6);
+  ctx.restore();
+}
+
+function drawStageClear(ctx, state) {
+  const { width, height } = state.world;
+  ctx.save();
+  ctx.fillStyle = 'rgba(255, 217, 236, 0.85)';
+  ctx.fillRect(0, 0, width, height);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e05a8a';
+  ctx.font = 'bold 36px sans-serif';
+  ctx.fillText(`ステージ ${state.stage} クリア！`, width / 2, height / 2 - 40);
+  ctx.fillStyle = '#7a6a8a';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('タップで次のステージへ', width / 2, height / 2 + 20);
   ctx.restore();
 }
 

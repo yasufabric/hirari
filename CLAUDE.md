@@ -9,7 +9,7 @@
 - `src/engine.js` — 純粋ロジックのみ。**DOM/Canvas/window 禁止**。すべてユニットテスト可能。マップ・妖怪・タワー・ウェーブの定義もここ。
 - `src/layout.js` — ボタン配置の純粋ロジック。renderer（描画）と main（当たり判定）で共用。
 - `src/renderer.js` — Canvas描画のみ。ゲーム状態を読むだけで**変更しない**。
-- `src/sfx.js` — WebAudioの効果音。失敗しても無視される。
+- `src/sfx.js` — WebAudioの和風サウンドエンジン。琴・太鼓・銅鑼の合成音とモード別プロシージャルBGM（title/calm/battle）。失敗しても無視される。
 - `src/main.js` — ゲームループ（requestAnimationFrame）＋入力処理（Pointer Events）＋localStorage進捗保存。engineとrendererを繋ぐ唯一の場所。
 - `index.html` — HTMLシェル。`<script type="module" src="src/main.js">` で読み込む。
 - `tests/engine.test.js` — Vitest ユニットテスト（engine.jsのみ対象）。

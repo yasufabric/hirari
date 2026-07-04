@@ -340,6 +340,7 @@ function damageEnemy(state, enemy, dmg, pierce = false) {
     pushEvent(state, 'kill');
     pushEffect(state, { kind: 'text', text: `+${enemy.bounty}`, x: enemy.x, y: enemy.y - 10, ttl: 0.7, color: '#ffe98a' });
     pushEffect(state, { kind: 'pop', x: enemy.x, y: enemy.y, r: enemy.radius + 6, ttl: 0.3, max: 0.3 });
+    pushEffect(state, { kind: 'soul', etype: enemy.type, x: enemy.x, y: enemy.y - 4, ttl: 0.8, max: 0.8 });
     return true;
   }
   return false;
@@ -386,6 +387,9 @@ export function update(state, rawDt) {
     const bonus = 25 + state.wave * 5;
     state.gold += bonus;
     state.score += bonus;
+    pushEffect(state, {
+      kind: 'text', text: `撃退！ 恩賞 +${bonus}G`, x: WORLD.w / 2, y: 262, ttl: 1.4, max: 1.4, color: '#f2d489',
+    });
     pushEvent(state, 'waveClear');
     if (state.wave >= state.totalWaves) {
       state.score += state.lives * 20;
@@ -451,6 +455,7 @@ function towerStep(state, dt) {
     const target = findTarget(state, tower, stats.range);
     if (!target) continue;
     tower.cd = stats.cd;
+    pushEvent(state, `shoot-${tower.type}`);
     if (def.hitscan) {
       const tx = target.x;
       const ty = target.y;

@@ -79,19 +79,37 @@ export function render(ctx, state, ui, t = 0) {
   ctx.fillStyle = P.ink;
   ctx.fillRect(0, 0, WORLD.w, WORLD.h);
 
+  // 爆発・被弾中はフィールドを揺らす（HUD/パネルは固定）
+  const shake = computeShake(state, t);
+  ctx.save();
+  ctx.translate(shake.x, shake.y);
   drawField(ctx, state, t);
   drawGhost(ctx, state, ui, t);
   drawTowers(ctx, state, ui, t);
   drawEnemies(ctx, state, t);
   drawProjectiles(ctx, state);
   drawEffects(ctx, state);
+  ctx.restore();
+
   drawWaveBanner(ctx, state);
   drawHud(ctx, state, t);
+  drawBossBar(ctx, state);
   drawPanel(ctx, state, ui, t);
 
   if (state.status === 'paused') drawResultScreen(ctx, state, ui, t, 'pause');
   if (state.status === 'gameover') drawResultScreen(ctx, state, ui, t, 'lose');
   if (state.status === 'victory') drawResultScreen(ctx, state, ui, t, 'win');
+}
+
+function computeShake(state, t) {
+  let amp = 0;
+  for (const fx of state.effects) {
+    if (fx.kind === 'boom') amp += fx.ttl * 5;
+    if (fx.kind === 'pop' && fx.color === '#ff6a8a') amp += fx.ttl * 9; // リーク
+  }
+  amp = Math.min(amp, 4);
+  if (amp < 0.05) return { x: 0, y: 0 };
+  return { x: Math.sin(t * 61) * amp, y: Math.cos(t * 53) * amp };
 }
 
 // ---------------- タイトル ----------------
@@ -159,8 +177,11 @@ function drawTitle(ctx, state, ui, t) {
   ctx.font = `12px ${SANS}`;
   ctx.fillText('侍と巫女で妖怪の大軍勢からお城を守れ', WORLD.w / 2, 228);
 
-  // マップカード
-  for (const b of getButtons(state, ui)) drawMapCard(ctx, b);
+  // マップカード＋ミュート
+  for (const b of getButtons(state, ui)) {
+    if (b.id === 'mute') drawUiButton(ctx, b, t, ui);
+    else drawMapCard(ctx, b);
+  }
 
   // 舞い散る桜（決定的アニメ）
   for (let i = 0; i < 16; i++) {
@@ -352,6 +373,19 @@ function drawField(ctx, state, t) {
     }
   }
 
+  // 流れる雲影
+  for (let i = 0; i < 2; i++) {
+    const cx = ((t * (7 + i * 4) + i * 260) % (WORLD.w + 260)) - 130;
+    const cy = fieldY + 90 + i * 210;
+    const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, 120);
+    g.addColorStop(0, 'rgba(10,20,10,0.075)');
+    g.addColorStop(1, 'rgba(10,20,10,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, 120, 62, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // 入口の鳥居（ベクター描画）
   const start = state.path.points[0];
   drawTorii(ctx, start.x, start.y, t);
@@ -475,6 +509,17 @@ function drawTowers(ctx, state, ui, t) {
       ctx.arc(tw.x, tw.y, stats.range, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
+      // 強化後の射程プレビュー
+      const def = TOWER_TYPES[tw.type];
+      if (tw.level < 3) {
+        ctx.strokeStyle = 'rgba(242,212,137,0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 6]);
+        ctx.beginPath();
+        ctx.arc(tw.x, tw.y, def.levels[tw.level].range, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
 
     // 発射直後のリコイル
@@ -796,6 +841,15 @@ function drawEffects(ctx, state) {
       ctx.textAlign = 'center';
       outlinedText(ctx, fx.text, fx.x, fx.y, `bold 13px ${SANS}`, fx.color || P.cream);
       ctx.globalAlpha = 1;
+    } else if (fx.kind === 'soul') {
+      // 倒した妖怪の魂が昇っていく
+      ctx.globalAlpha = k * 0.75;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${Math.round(12 + (1 - k) * 4)}px serif`;
+      ctx.fillText(ENEMY_STYLE[fx.etype]?.icon || '👻', fx.x, fx.y - (1 - k) * 26);
+      ctx.textBaseline = 'alphabetic';
+      ctx.globalAlpha = 1;
     } else if (fx.kind === 'dmg') {
       ctx.globalAlpha = Math.min(1, fx.ttl * 3) * 0.9;
       ctx.textAlign = 'center';
@@ -900,6 +954,40 @@ function drawHud(ctx, state, t) {
   ctx.fillText(String(state.score), WORLD.w - 8, 34);
 }
 
+// ---------------- ボスHPバー ----------------
+function drawBossBar(ctx, state) {
+  if (state.status !== 'playing') return;
+  const boss = state.enemies.find((e) => e.type === 'boss');
+  if (!boss) return;
+  const y = GRID.top + 8;
+  const w = 260;
+  const x = (WORLD.w - w) / 2;
+  ctx.fillStyle = 'rgba(13,9,18,0.78)';
+  rr(ctx, x - 10, y - 6, w + 20, 26, 13);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,106,122,0.6)';
+  ctx.lineWidth = 1;
+  rr(ctx, x - 10, y - 6, w + 20, 26, 13);
+  ctx.stroke();
+  ctx.textAlign = 'left';
+  ctx.font = '11px serif';
+  ctx.fillText('🦊', x - 2, y + 10);
+  ctx.fillStyle = P.cream;
+  ctx.font = `bold 10px ${SERIF}`;
+  ctx.fillText('九尾の狐', x + 14, y + 9);
+  const bx = x + 68;
+  const bw = w - 72;
+  const ratio = Math.max(0, boss.hp / boss.maxHp);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  rr(ctx, bx, y + 1, bw, 8, 4);
+  ctx.fill();
+  if (ratio > 0) {
+    ctx.fillStyle = ratio > 0.5 ? '#e05a40' : ratio > 0.25 ? '#ffd76a' : '#ff6a7a';
+    rr(ctx, bx, y + 1, Math.max(3, bw * ratio), 8, 4);
+    ctx.fill();
+  }
+}
+
 // ---------------- 下部パネル ----------------
 function drawPanel(ctx, state, ui, t) {
   ctx.fillStyle = vGrad(ctx, 0, PANEL_Y, WORLD.h - PANEL_Y, '#241b2e', '#160f1e');
@@ -932,8 +1020,19 @@ function drawPanel(ctx, state, ui, t) {
   }
 
   for (const b of getButtons(state, ui)) {
-    if (b.id.startsWith('build-')) drawBuildButton(ctx, b, t);
-    else drawUiButton(ctx, b, t);
+    if (b.id.startsWith('build-')) drawBuildButton(ctx, b, t, ui);
+    else drawUiButton(ctx, b, t, ui);
+  }
+}
+
+// 押した瞬間だけ縮む
+function pressScale(ctx, b, t, ui) {
+  if (ui?.pressed?.id === b.id && t - ui.pressed.at < 0.13) {
+    const cx = b.x + b.w / 2;
+    const cy = b.y + b.h / 2;
+    ctx.translate(cx, cy);
+    ctx.scale(0.93, 0.93);
+    ctx.translate(-cx, -cy);
   }
 }
 
@@ -950,7 +1049,9 @@ function strip(ctx, text) {
   ctx.restore();
 }
 
-function drawBuildButton(ctx, b, t) {
+function drawBuildButton(ctx, b, t, ui) {
+  ctx.save();
+  pressScale(ctx, b, t, ui);
   ctx.save();
   if (b.active) {
     ctx.shadowColor = 'rgba(242,212,137,0.65)';
@@ -988,10 +1089,13 @@ function drawBuildButton(ctx, b, t) {
   ctx.fillStyle = b.enabled ? P.goldHi : P.dim;
   ctx.font = `bold 10.5px ${SANS}`;
   ctx.fillText(b.sub, b.x + 42, b.y + 40);
+  ctx.restore();
 }
 
-function drawUiButton(ctx, b, t) {
+function drawUiButton(ctx, b, t, ui) {
   const primary = b.id === 'wave-start' || b.id === 'retry' || b.id === 'resume' || (b.id === 'upgrade' && b.enabled);
+  ctx.save();
+  pressScale(ctx, b, t, ui);
   ctx.save();
   if (primary && b.enabled) {
     ctx.shadowColor = 'rgba(199,62,46,0.55)';
@@ -1012,8 +1116,9 @@ function drawUiButton(ctx, b, t) {
 
   ctx.textAlign = 'center';
   ctx.fillStyle = b.enabled ? P.cream : '#6e6280';
-  ctx.font = `bold 13px ${SANS}`;
-  ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 4.5);
+  ctx.font = b.id === 'mute' ? '16px serif' : `bold 13px ${SANS}`;
+  ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + (b.id === 'mute' ? 5.5 : 4.5));
+  ctx.restore();
 }
 
 // ---------------- リザルト / ポーズ ----------------
@@ -1065,5 +1170,5 @@ function drawResultScreen(ctx, state, ui, t, mode) {
     ctx.fillText(`SCORE ${state.score}`, WORLD.w / 2, 330);
   }
 
-  for (const b of getButtons(state, ui)) drawUiButton(ctx, b, t);
+  for (const b of getButtons(state, ui)) drawUiButton(ctx, b, t, ui);
 }

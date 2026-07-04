@@ -302,6 +302,7 @@ describe('タワーの攻撃', () => {
     expect(state.gold).toBe(goldAfterBuild + ENEMY_TYPES.normal.bounty);
     expect(state.towers[0].kills).toBe(1);
     expect(state.events).toContain('kill');
+    expect(state.events).toContain('shoot-arrow');
   });
 
   it('射程外の敵は撃たない', () => {

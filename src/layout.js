@@ -22,6 +22,7 @@ export function getButtons(state, ui) {
         cleared: !!ui.cleared[i],
       });
     });
+    buttons.push(muteButton(ui, 304, 588));
     return buttons;
   }
 
@@ -34,6 +35,7 @@ export function getButtons(state, ui) {
   if (state.status === 'paused') {
     buttons.push({ id: 'resume', x: 60, y: 300, w: 240, h: 56, label: 'つづける', enabled: true });
     buttons.push({ id: 'to-title', x: 60, y: 370, w: 240, h: 56, label: 'マップせんたく', enabled: true });
+    buttons.push(muteButton(ui, 148, 440));
     return buttons;
   }
 
@@ -77,13 +79,18 @@ export function getButtons(state, ui) {
       ? 'クリアまであと少し'
       : `▶ WAVE ${state.wave + 1} 開始`;
   buttons.push({
-    id: 'wave-start', x: 4, y: PANEL_Y + 62, w: 150, h: 46,
+    id: 'wave-start', x: 4, y: PANEL_Y + 62, w: 140, h: 46,
     label: waveLabel,
     enabled: !state.waveActive && state.wave < state.totalWaves,
   });
-  buttons.push({ id: 'speed', x: 158, y: PANEL_Y + 62, w: 96, h: 46, label: `⏩ x${state.gameSpeed}`, enabled: true });
-  buttons.push({ id: 'pause', x: 258, y: PANEL_Y + 62, w: 98, h: 46, label: '⏸ ポーズ', enabled: true });
+  buttons.push({ id: 'speed', x: 148, y: PANEL_Y + 62, w: 64, h: 46, label: `⏩x${state.gameSpeed}`, enabled: true });
+  buttons.push({ id: 'pause', x: 216, y: PANEL_Y + 62, w: 78, h: 46, label: '⏸ 休戦', enabled: true });
+  buttons.push(muteButton(ui, 298, PANEL_Y + 62, 58, 46));
   return buttons;
+}
+
+function muteButton(ui, x, y, w = 52, h = 40) {
+  return { id: 'mute', x, y, w, h, label: ui.muted ? '🔇' : '🔊', enabled: true };
 }
 
 export function hitButton(buttons, x, y) {

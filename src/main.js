@@ -7,9 +7,10 @@ import {
 } from './engine.js';
 import { render } from './renderer.js';
 import { getButtons, hitButton } from './layout.js';
-import { initAudio, playSfx } from './sfx.js';
+import { initAudio, playSfx, setMuted, setMode } from './sfx.js';
 
 const SAVE_KEY = 'mamori-td.progress.v1';
+const MUTE_KEY = 'mamori-td.muted.v1';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -21,8 +22,19 @@ const ui = {
   hoverCell: null,
   cleared: loadProgress(),
   unlocked: 1,
+  muted: loadMuted(),
+  pressed: null, // { id, at } ボタン押下アニメ用
 };
 refreshUnlocked();
+setMuted(ui.muted);
+
+function loadMuted() {
+  try {
+    return localStorage.getItem(MUTE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 // ---------------- 進捗保存 ----------------
 function loadProgress() {
@@ -88,6 +100,10 @@ canvas.addEventListener('pointermove', (ev) => {
 function handleTap(x, y) {
   const button = hitButton(getButtons(state, ui), x, y);
   if (button) {
+    if (button.enabled) {
+      ui.pressed = { id: button.id, at: performance.now() / 1000 };
+      playSfx('tap');
+    }
     onButton(button);
     return;
   }
@@ -135,6 +151,12 @@ function onButton(b) {
     ui.selectedTowerId = null;
   } else if (id === 'close') {
     ui.selectedTowerId = null;
+  } else if (id === 'mute') {
+    ui.muted = !ui.muted;
+    setMuted(ui.muted);
+    try {
+      localStorage.setItem(MUTE_KEY, ui.muted ? '1' : '0');
+    } catch { /* noop */ }
   } else if (id === 'retry') {
     startRun(state.mapIndex);
   } else if (id === 'to-title') {
@@ -170,11 +192,19 @@ function drainEvents() {
 // ---------------- ゲームループ ----------------
 let last = performance.now();
 
+function bgmMode() {
+  if (state.status === 'title') return 'title';
+  if (state.status === 'playing') return state.waveActive ? 'battle' : 'calm';
+  if (state.status === 'paused') return 'calm';
+  return 'off';
+}
+
 function frame(now) {
   const dt = (now - last) / 1000;
   last = now;
   update(state, dt);
   drainEvents();
+  setMode(bgmMode());
   render(ctx, state, ui, now / 1000);
   requestAnimationFrame(frame);
 }

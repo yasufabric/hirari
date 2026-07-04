@@ -207,6 +207,14 @@ describe('ウェーブ', () => {
     expect(state.enemies.length).toBeGreaterThan(1);
   });
 
+  it('ウェーブ開始で襲来バナーが出て、時間経過で消える', () => {
+    const state = playingState();
+    startNextWave(state);
+    expect(state.waveBanner).toMatchObject({ wave: 1, boss: false });
+    simulate(state, 3);
+    expect(state.waveBanner).toBeNull();
+  });
+
   it('ウェーブ進行中は次のウェーブを開始できない', () => {
     const state = playingState();
     startNextWave(state);

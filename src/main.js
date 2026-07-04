@@ -175,7 +175,7 @@ function frame(now) {
   last = now;
   update(state, dt);
   drainEvents();
-  render(ctx, state, ui);
+  render(ctx, state, ui, now / 1000);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

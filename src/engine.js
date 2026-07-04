@@ -196,6 +196,7 @@ function runFields(mapIndex) {
     projectiles: [],
     effects: [],
     events: [],
+    waveBanner: null,
     gameSpeed: 1,
     nextId: 1,
     time: 0,
@@ -287,6 +288,7 @@ export function startNextWave(state) {
   state.waveMods = { hpMult: w.hpMult, speedMult: w.speedMult };
   state.spawnTimer = 0;
   state.waveActive = true;
+  state.waveBanner = { wave: state.wave, boss: state.wave % 10 === 0, ttl: 2.2, max: 2.2 };
   pushEvent(state, 'waveStart');
   return true;
 }
@@ -326,6 +328,11 @@ function damageEnemy(state, enemy, dmg, pierce = false) {
   if (enemy.dead) return false;
   const eff = Math.max(1, dmg - (pierce ? 0 : enemy.armor));
   enemy.hp -= eff;
+  pushEffect(state, {
+    kind: 'dmg', text: String(eff),
+    x: enemy.x + ((state.nextId % 5) - 2) * 4, y: enemy.y - enemy.radius - 2,
+    ttl: 0.55, max: 0.55,
+  });
   if (enemy.hp <= 0) {
     enemy.dead = true;
     state.gold += enemy.bounty;
@@ -352,6 +359,11 @@ export function update(state, rawDt) {
   if (state.status !== 'playing') return;
   const dt = Math.min(rawDt, 0.05) * state.gameSpeed;
   state.time += dt;
+
+  if (state.waveBanner) {
+    state.waveBanner.ttl -= dt;
+    if (state.waveBanner.ttl <= 0) state.waveBanner = null;
+  }
 
   spawnStep(state, dt);
   enemyStep(state, dt);
@@ -440,10 +452,13 @@ function towerStep(state, dt) {
     if (!target) continue;
     tower.cd = stats.cd;
     if (def.hitscan) {
+      const tx = target.x;
+      const ty = target.y;
       if (damageEnemy(state, target, stats.dmg, !!def.pierce)) tower.kills += 1;
       pushEffect(state, {
-        kind: 'beam', x1: tower.x, y1: tower.y, x2: target.x, y2: target.y, ttl: 0.12, max: 0.12,
+        kind: 'beam', x1: tower.x, y1: tower.y, x2: tx, y2: ty, ttl: 0.12, max: 0.12,
       });
+      pushEffect(state, { kind: 'spark', x: tx, y: ty, ttl: 0.18, max: 0.18, seed: state.nextId });
     } else {
       state.projectiles.push({
         id: state.nextId++,
@@ -504,6 +519,9 @@ function impact(state, p, target) {
   }
   if (!target) return;
   if (damageEnemy(state, target, p.dmg)) creditKill(state, p);
+  if (p.type === 'arrow') {
+    pushEffect(state, { kind: 'spark', x: target.x, y: target.y, ttl: 0.18, max: 0.18, seed: p.id });
+  }
   if (p.type === 'frost') {
     applySlow(state, target, p.slowMult, p.slowTime);
     pushEffect(state, { kind: 'pop', x: target.x, y: target.y, r: target.radius + 4, ttl: 0.25, max: 0.25, color: '#9fdcff' });

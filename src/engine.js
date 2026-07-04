@@ -177,6 +177,11 @@ export function makeWave(mapIndex, wave) {
 }
 
 // ---------------- 状態 ----------------
+export const WAVE_INTERVAL = 12; // ウェーブ撃退後、次波が自動で来るまでの秒数
+export const EARLY_CALL_RATE = 2; // 早呼びボーナス: 残り秒数 × この係数のゴールド
+export const COMBO_WINDOW = 2.5; // この秒数以内の連続撃破でコンボ継続
+export const COMBO_BONUS = 0.1; // コンボ1段ごとの報奨金倍率アップ（最大2倍）
+
 function runFields(mapIndex) {
   const map = MAPS[mapIndex];
   return {
@@ -187,6 +192,10 @@ function runFields(mapIndex) {
     score: 0,
     wave: 0,
     totalWaves: map.totalWaves,
+    endless: false,
+    nextWaveTimer: 0,
+    combo: { count: 0, timer: 0 },
+    maxCombo: 0,
     waveActive: false,
     waveMods: { hpMult: 1, speedMult: 1 },
     spawnQueue: [],
@@ -218,8 +227,8 @@ function pushEffect(state, effect) {
 }
 
 // ---------------- アクション ----------------
-export function startGame(state, mapIndex = state.mapIndex) {
-  Object.assign(state, runFields(mapIndex), { status: 'playing' });
+export function startGame(state, mapIndex = state.mapIndex, endless = false) {
+  Object.assign(state, runFields(mapIndex), { status: 'playing', endless });
 }
 
 export function toTitle(state) {
@@ -281,7 +290,19 @@ export function sellTower(state, id) {
 }
 
 export function startNextWave(state) {
-  if (state.status !== 'playing' || state.waveActive || state.wave >= state.totalWaves) return false;
+  if (state.status !== 'playing' || state.waveActive) return false;
+  if (!state.endless && state.wave >= state.totalWaves) return false;
+  // 早呼びボーナス（自動カウントダウン中に手動で呼んだ分だけ恩賞）
+  if (state.nextWaveTimer > 0) {
+    const bonus = Math.ceil(state.nextWaveTimer * EARLY_CALL_RATE);
+    state.gold += bonus;
+    state.score += bonus;
+    pushEffect(state, {
+      kind: 'text', text: `早呼び恩賞 +${bonus}G`, x: WORLD.w / 2, y: 292, ttl: 1.1, max: 1.1, color: '#f2d489',
+    });
+    pushEvent(state, 'earlyCall');
+    state.nextWaveTimer = 0;
+  }
   state.wave += 1;
   const w = makeWave(state.mapIndex, state.wave);
   state.spawnQueue = [...w.entries];
@@ -315,6 +336,7 @@ export function spawnEnemy(state, type, dist = 0) {
     y: pos.y,
     slowMult: 1,
     slowTimer: 0,
+    hitTimer: 0,
     dead: false,
     leaked: false,
   };
@@ -328,6 +350,7 @@ function damageEnemy(state, enemy, dmg, pierce = false) {
   if (enemy.dead) return false;
   const eff = Math.max(1, dmg - (pierce ? 0 : enemy.armor));
   enemy.hp -= eff;
+  enemy.hitTimer = 0.12; // 被弾フラッシュ
   pushEffect(state, {
     kind: 'dmg', text: String(eff),
     x: enemy.x + ((state.nextId % 5) - 2) * 4, y: enemy.y - enemy.radius - 2,
@@ -335,10 +358,17 @@ function damageEnemy(state, enemy, dmg, pierce = false) {
   });
   if (enemy.hp <= 0) {
     enemy.dead = true;
-    state.gold += enemy.bounty;
-    state.score += enemy.bounty;
+    // コンボ：時間内の連続撃破で報奨金アップ（最大2倍）
+    state.combo.count = state.combo.timer > 0 ? state.combo.count + 1 : 1;
+    state.combo.timer = COMBO_WINDOW;
+    if (state.combo.count > state.maxCombo) state.maxCombo = state.combo.count;
+    const mult = Math.min(2, 1 + COMBO_BONUS * (state.combo.count - 1));
+    const reward = Math.round(enemy.bounty * mult);
+    state.gold += reward;
+    state.score += reward;
     pushEvent(state, 'kill');
-    pushEffect(state, { kind: 'text', text: `+${enemy.bounty}`, x: enemy.x, y: enemy.y - 10, ttl: 0.7, color: '#ffe98a' });
+    if (state.combo.count >= 3) pushEvent(state, 'combo');
+    pushEffect(state, { kind: 'text', text: `+${reward}`, x: enemy.x, y: enemy.y - 10, ttl: 0.7, color: '#ffe98a' });
     pushEffect(state, { kind: 'pop', x: enemy.x, y: enemy.y, r: enemy.radius + 6, ttl: 0.3, max: 0.3 });
     pushEffect(state, { kind: 'soul', etype: enemy.type, x: enemy.x, y: enemy.y - 4, ttl: 0.8, max: 0.8 });
     return true;
@@ -366,6 +396,21 @@ export function update(state, rawDt) {
     if (state.waveBanner.ttl <= 0) state.waveBanner = null;
   }
 
+  // コンボ窓の減衰
+  if (state.combo.timer > 0) {
+    state.combo.timer -= dt;
+    if (state.combo.timer <= 0) state.combo.count = 0;
+  }
+
+  // 次ウェーブの自動カウントダウン
+  if (state.nextWaveTimer > 0 && !state.waveActive) {
+    state.nextWaveTimer -= dt;
+    if (state.nextWaveTimer <= 0) {
+      state.nextWaveTimer = 0;
+      startNextWave(state);
+    }
+  }
+
   spawnStep(state, dt);
   enemyStep(state, dt);
   towerStep(state, dt);
@@ -391,10 +436,12 @@ export function update(state, rawDt) {
       kind: 'text', text: `撃退！ 恩賞 +${bonus}G`, x: WORLD.w / 2, y: 262, ttl: 1.4, max: 1.4, color: '#f2d489',
     });
     pushEvent(state, 'waveClear');
-    if (state.wave >= state.totalWaves) {
+    if (!state.endless && state.wave >= state.totalWaves) {
       state.score += state.lives * 20;
       state.status = 'victory';
       pushEvent(state, 'victory');
+    } else {
+      state.nextWaveTimer = WAVE_INTERVAL;
     }
   }
 }
@@ -411,6 +458,7 @@ function spawnStep(state, dt) {
 
 function enemyStep(state, dt) {
   for (const e of state.enemies) {
+    if (e.hitTimer > 0) e.hitTimer -= dt;
     if (e.slowTimer > 0) {
       e.slowTimer -= dt;
       if (e.slowTimer <= 0) e.slowMult = 1;

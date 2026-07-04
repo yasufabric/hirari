@@ -16,11 +16,14 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 const state = createState();
+const progress = loadProgress();
 const ui = {
   buildType: null,
   selectedTowerId: null,
   hoverCell: null,
-  cleared: loadProgress(),
+  cleared: progress.cleared,
+  best: progress.best,
+  bestWave: progress.bestWave,
   unlocked: 1,
   muted: loadMuted(),
   pressed: null, // { id, at } ボタン押下アニメ用
@@ -38,17 +41,25 @@ function loadMuted() {
 
 // ---------------- 進捗保存 ----------------
 function loadProgress() {
+  let data = null;
   try {
     const raw = localStorage.getItem(SAVE_KEY);
-    const data = raw ? JSON.parse(raw) : null;
-    if (Array.isArray(data?.cleared)) return MAPS.map((_, i) => !!data.cleared[i]);
+    data = raw ? JSON.parse(raw) : null;
   } catch { /* noop */ }
-  return MAPS.map(() => false);
+  return {
+    cleared: MAPS.map((_, i) => !!data?.cleared?.[i]),
+    best: MAPS.map((_, i) => Number(data?.best?.[i]) || 0),
+    bestWave: MAPS.map((_, i) => Number(data?.bestWave?.[i]) || 0),
+  };
 }
 
 function saveProgress() {
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ cleared: ui.cleared }));
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      cleared: ui.cleared,
+      best: ui.best,
+      bestWave: ui.bestWave,
+    }));
   } catch { /* noop */ }
 }
 
@@ -134,6 +145,8 @@ function onButton(b) {
   const id = b.id;
   if (id.startsWith('map-')) {
     startRun(Number(id.slice(4)));
+  } else if (id.startsWith('endless-')) {
+    startRun(Number(id.slice(8)), true);
   } else if (id.startsWith('build-')) {
     ui.buildType = ui.buildType === b.towerType ? null : b.towerType;
     ui.selectedTowerId = null;
@@ -158,15 +171,15 @@ function onButton(b) {
       localStorage.setItem(MUTE_KEY, ui.muted ? '1' : '0');
     } catch { /* noop */ }
   } else if (id === 'retry') {
-    startRun(state.mapIndex);
+    startRun(state.mapIndex, state.endless);
   } else if (id === 'to-title') {
     toTitle(state);
     resetUiSelection();
   }
 }
 
-function startRun(mapIndex) {
-  startGame(state, mapIndex);
+function startRun(mapIndex, endless = false) {
+  startGame(state, mapIndex, endless);
   resetUiSelection();
 }
 
@@ -182,8 +195,13 @@ function drainEvents() {
     playSfx(ev);
     if (ev === 'victory') {
       ui.cleared[state.mapIndex] = true;
+      ui.best[state.mapIndex] = Math.max(ui.best[state.mapIndex], state.score);
       saveProgress();
       refreshUnlocked();
+    }
+    if (ev === 'gameover' && state.endless) {
+      ui.bestWave[state.mapIndex] = Math.max(ui.bestWave[state.mapIndex], state.wave);
+      saveProgress();
     }
   }
   state.events.length = 0;

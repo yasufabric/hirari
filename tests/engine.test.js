@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WORLD, GRID, MAPS, ENEMY_TYPES, TOWER_TYPES, START_GOLD, START_LIVES, SELL_RATE,
+  WAVE_INTERVAL, EARLY_CALL_RATE,
   createState, startGame, update, togglePause, cycleSpeed, toTitle,
   buildPath, pointAt, cellCenter, pointToCell, canBuildAt,
   placeTower, upgradeTower, sellTower, startNextWave, spawnEnemy, makeWave, towerStats,
@@ -369,6 +370,115 @@ describe('タワーの攻撃', () => {
     update(state, 0.016);
     expect(front.hp).toBeLessThan(front.maxHp);
     expect(back.hp).toBe(back.maxHp);
+  });
+});
+
+describe('コンボ', () => {
+  it('時間内の連続撃破でコンボが伸び、報奨金が増える', () => {
+    const state = playingState();
+    placeTower(state, 'arrow', 1, 2);
+    const goldAfterBuild = state.gold;
+    const e1 = spawnEnemy(state, 'normal', 40);
+    const e2 = spawnEnemy(state, 'normal', 55);
+    e1.hp = 1;
+    e2.hp = 1;
+    simulate(state, 3);
+    expect(state.enemies).toHaveLength(0);
+    expect(state.maxCombo).toBe(2);
+    // 1体目は等倍6G、2体目はコンボ×1.1で round(6.6)=7G
+    expect(state.gold).toBe(goldAfterBuild + 6 + 7);
+    expect(state.events).toContain('kill');
+  });
+
+  it('時間が空くとコンボはリセットされる', () => {
+    const state = playingState();
+    const e = spawnEnemy(state, 'normal', 40);
+    e.hp = 0.5;
+    placeTower(state, 'sniper', 1, 2);
+    update(state, 0.016);
+    expect(state.combo.count).toBe(1);
+    simulate(state, 3); // COMBO_WINDOW超え
+    expect(state.combo.count).toBe(0);
+    expect(state.maxCombo).toBe(1);
+  });
+
+  it('被弾した敵にはヒットフラッシュのタイマーが付く', () => {
+    const state = playingState();
+    placeTower(state, 'sniper', 1, 2);
+    const e = spawnEnemy(state, 'tank', 40);
+    update(state, 0.016);
+    expect(e.hitTimer).toBeGreaterThan(0);
+  });
+});
+
+describe('自動カウントダウンと早呼び', () => {
+  function clearWave(state) {
+    startNextWave(state);
+    state.spawnQueue = [];
+    state.enemies = [];
+    update(state, 0.016);
+  }
+
+  it('ウェーブ撃退後にカウントダウンが始まり、0で次波が自動開始', () => {
+    const state = playingState();
+    clearWave(state);
+    expect(state.waveActive).toBe(false);
+    expect(state.nextWaveTimer).toBe(WAVE_INTERVAL);
+    simulate(state, WAVE_INTERVAL + 0.2);
+    expect(state.wave).toBe(2);
+    expect(state.waveActive).toBe(true);
+  });
+
+  it('カウントダウン中に手動で呼ぶと残り時間分のボーナス', () => {
+    const state = playingState();
+    clearWave(state);
+    const goldBefore = state.gold;
+    expect(startNextWave(state)).toBe(true);
+    expect(state.wave).toBe(2);
+    expect(state.gold).toBe(goldBefore + Math.ceil(WAVE_INTERVAL * EARLY_CALL_RATE));
+    expect(state.events).toContain('earlyCall');
+    expect(state.nextWaveTimer).toBe(0);
+  });
+
+  it('最終ウェーブクリア後はカウントダウンしない（通常モード）', () => {
+    const state = playingState();
+    state.wave = state.totalWaves;
+    state.waveActive = true;
+    state.spawnQueue = [];
+    state.enemies = [];
+    update(state, 0.016);
+    expect(state.status).toBe('victory');
+    expect(state.nextWaveTimer).toBe(0);
+  });
+});
+
+describe('エンドレスモード', () => {
+  it('第20波を超えても勝利にならず戦いが続く', () => {
+    const state = createState();
+    startGame(state, 0, true);
+    expect(state.endless).toBe(true);
+    state.wave = state.totalWaves;
+    state.waveActive = true;
+    state.spawnQueue = [];
+    state.enemies = [];
+    update(state, 0.016);
+    expect(state.status).toBe('playing');
+    expect(state.nextWaveTimer).toBe(WAVE_INTERVAL);
+    expect(startNextWave(state)).toBe(true);
+    expect(state.wave).toBe(state.totalWaves + 1);
+  });
+
+  it('第21波以降のウェーブも生成できる', () => {
+    const w = makeWave(0, 25);
+    expect(w.entries.length).toBeGreaterThan(0);
+    expect(w.hpMult).toBeGreaterThan(makeWave(0, 20).hpMult);
+    expect(makeWave(0, 30).entries.filter((e) => e.type === 'boss')).toHaveLength(3);
+  });
+
+  it('通常モードでは最終ウェーブ後に開始できない', () => {
+    const state = playingState();
+    state.wave = state.totalWaves;
+    expect(startNextWave(state)).toBe(false);
   });
 });
 

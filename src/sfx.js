@@ -236,6 +236,16 @@ const SOUNDS = {
   },
   sell: () => { chime(1320, ac.currentTime, 0.25, 0.12); chime(990, ac.currentTime + 0.08, 0.2, 0.16); },
   kill: () => { if (!throttled('kill', 0.05)) chime(1560, ac.currentTime, 0.1, 0.07); },
+  combo: () => {
+    if (throttled('combo', 0.18)) return;
+    chime(1320, ac.currentTime, 0.12, 0.07);
+    chime(1760, ac.currentTime + 0.06, 0.14, 0.1);
+  },
+  earlyCall: () => {
+    chime(1320, ac.currentTime, 0.22, 0.1);
+    chime(1980, ac.currentTime + 0.07, 0.2, 0.16);
+    don(ac.currentTime, 0.6, sfxBus);
+  },
   leak: () => gong(ac.currentTime, 0.8, 82),
   waveStart: () => {
     don(ac.currentTime, 0.9, sfxBus);

@@ -1,7 +1,7 @@
 // src/layout.js — ボタン配置の純粋ロジック。renderer（描画）と main（当たり判定）の両方から使う。
 // DOM/Canvas には触らない。
 
-import { MAPS, TOWER_TYPES, TOWER_ORDER, SELL_RATE } from './engine.js';
+import { MAPS, TOWER_TYPES, TOWER_ORDER, SELL_RATE, EARLY_CALL_RATE } from './engine.js';
 
 export const PANEL_Y = 528; // 下部パネルの開始Y
 
@@ -13,14 +13,18 @@ export function getButtons(state, ui) {
   if (state.status === 'title') {
     MAPS.forEach((map, i) => {
       const locked = i >= ui.unlocked;
+      const y = 250 + i * 108;
       buttons.push({
         id: `map-${i}`,
-        x: 36, y: 250 + i * 108, w: 288, h: 92,
+        x: 36, y, w: 288, h: 92,
         label: locked ? '🔒 ロック中' : `${i + 1}. ${map.name}`,
         sub: locked ? '前のマップをクリアで解放' : map.desc,
         enabled: !locked,
         cleared: !!ui.cleared[i],
       });
+      if (ui.cleared[i]) {
+        buttons.push({ id: `endless-${i}`, x: 226, y: y + 58, w: 90, h: 26, label: '∞ 果てなき戦', enabled: true });
+      }
     });
     buttons.push(muteButton(ui, 304, 588));
     return buttons;
@@ -73,15 +77,19 @@ export function getButtons(state, ui) {
     });
   }
 
+  const total = state.endless ? '∞' : state.totalWaves;
+  const canCall = !state.waveActive && (state.endless || state.wave < state.totalWaves);
   const waveLabel = state.waveActive
-    ? `WAVE ${state.wave}/${state.totalWaves} 進行中`
-    : state.wave >= state.totalWaves
-      ? 'クリアまであと少し'
-      : `▶ WAVE ${state.wave + 1} 開始`;
+    ? `WAVE ${state.wave}/${total} 進行中`
+    : state.nextWaveTimer > 0
+      ? `▶ 早呼び +${Math.ceil(state.nextWaveTimer * EARLY_CALL_RATE)}G`
+      : canCall
+        ? `▶ WAVE ${state.wave + 1} 開始`
+        : 'クリアまであと少し';
   buttons.push({
     id: 'wave-start', x: 4, y: PANEL_Y + 62, w: 140, h: 46,
     label: waveLabel,
-    enabled: !state.waveActive && state.wave < state.totalWaves,
+    enabled: canCall,
   });
   buttons.push({ id: 'speed', x: 148, y: PANEL_Y + 62, w: 64, h: 46, label: `⏩x${state.gameSpeed}`, enabled: true });
   buttons.push({ id: 'pause', x: 216, y: PANEL_Y + 62, w: 78, h: 46, label: '⏸ 休戦', enabled: true });

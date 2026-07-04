@@ -2,7 +2,7 @@
 // t は演出用の実時間（秒）。main.js から渡される。ゲームロジックには一切影響しない。
 
 import {
-  WORLD, GRID, MAPS, TOWER_TYPES, towerStats, cellCenter, canBuildAt, makeWave,
+  WORLD, GRID, MAPS, TOWER_TYPES, towerStats, cellCenter, canBuildAt, makeWave, WAVE_INTERVAL,
 } from './engine.js';
 import { getButtons, PANEL_Y } from './layout.js';
 
@@ -94,6 +94,7 @@ export function render(ctx, state, ui, t = 0) {
   drawWaveBanner(ctx, state);
   drawHud(ctx, state, t);
   drawBossBar(ctx, state);
+  drawCombo(ctx, state, t);
   drawPanel(ctx, state, ui, t);
 
   if (state.status === 'paused') drawResultScreen(ctx, state, ui, t, 'pause');
@@ -177,10 +178,10 @@ function drawTitle(ctx, state, ui, t) {
   ctx.font = `12px ${SANS}`;
   ctx.fillText('侍と巫女で妖怪の大軍勢からお城を守れ', WORLD.w / 2, 228);
 
-  // マップカード＋ミュート
+  // マップカード＋エンドレス＋ミュート
   for (const b of getButtons(state, ui)) {
-    if (b.id === 'mute') drawUiButton(ctx, b, t, ui);
-    else drawMapCard(ctx, b);
+    if (b.id === 'mute' || b.id.startsWith('endless-')) drawUiButton(ctx, b, t, ui);
+    else drawMapCard(ctx, b, ui);
   }
 
   // 舞い散る桜（決定的アニメ）
@@ -207,7 +208,7 @@ function drawTitle(ctx, state, ui, t) {
   ctx.globalAlpha = 1;
 }
 
-function drawMapCard(ctx, b) {
+function drawMapCard(ctx, b, ui) {
   const i = Number(b.id.slice(4));
   const map = MAPS[i];
 
@@ -271,7 +272,19 @@ function drawMapCard(ctx, b) {
   ctx.fillText(`${['一', '二', '三'][i]}の陣  ${map.name}`, b.x + 88, b.y + 34);
   ctx.fillStyle = P.dim;
   ctx.font = `10.5px ${SANS}`;
-  wrapText(ctx, map.desc, b.x + 88, b.y + 54, b.w - 100, 15);
+  if (b.cleared) {
+    // クリア済みは説明の代わりに記録を表示
+    const best = ui.best?.[i] || 0;
+    const bw = ui.bestWave?.[i] || 0;
+    ctx.fillStyle = P.goldHi;
+    ctx.fillText(`ベスト ${best}`, b.x + 88, b.y + 54);
+    if (bw > 0) {
+      ctx.fillStyle = P.dim;
+      ctx.fillText(`∞最高 第${bw}波`, b.x + 88, b.y + 70);
+    }
+  } else {
+    wrapText(ctx, map.desc, b.x + 88, b.y + 54, b.w - 100, 15);
+  }
 
   if (b.cleared) {
     ctx.textAlign = 'right';
@@ -688,6 +701,16 @@ function drawEnemies(ctx, state, t) {
     ctx.font = `${Math.round(e.radius * 2.15)}px serif`;
     ctx.fillText(style.icon, e.x, e.y + bob);
 
+    // 被弾フラッシュ
+    if (e.hitTimer > 0) {
+      ctx.globalAlpha = (e.hitTimer / 0.12) * 0.55;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(e.x, e.y + bob, e.radius + 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     if (slowed) {
       ctx.strokeStyle = 'rgba(159,220,255,0.9)';
       ctx.lineWidth = 1.5;
@@ -933,13 +956,13 @@ function drawHud(ctx, state, t) {
   chip(182, 92);
   ctx.fillStyle = P.cream;
   ctx.font = `bold 13px ${SERIF}`;
-  ctx.fillText(`波 ${state.wave}/${state.totalWaves}`, 192, 28);
+  ctx.fillText(`波 ${state.wave}/${state.endless ? '∞' : state.totalWaves}`, 192, 28);
   // 進行ミニバー
   ctx.fillStyle = 'rgba(255,255,255,0.15)';
   rr(ctx, 192, 31.5, 72, 3, 1.5);
   ctx.fill();
   ctx.fillStyle = P.gold;
-  const prog = state.wave / state.totalWaves;
+  const prog = Math.min(1, state.wave / state.totalWaves);
   if (prog > 0) {
     rr(ctx, 192, 31.5, Math.max(2, 72 * prog), 3, 1.5);
     ctx.fill();
@@ -988,12 +1011,47 @@ function drawBossBar(ctx, state) {
   }
 }
 
+// ---------------- コンボ表示 ----------------
+function drawCombo(ctx, state, t) {
+  if (state.status !== 'playing') return;
+  const c = state.combo;
+  if (c.count < 2 || c.timer <= 0) return;
+  const tier = c.count >= 10 ? 2 : c.count >= 5 ? 1 : 0;
+  const color = ['#ffe98a', '#ffb05f', '#ff6a5a'][tier];
+  // 直後ほど大きく弾む
+  const fresh = Math.max(0, c.timer - (2.5 - 0.18)) / 0.18;
+  const size = 20 + tier * 3 + fresh * 8;
+  ctx.save();
+  ctx.translate(14, GRID.top + 30);
+  ctx.rotate(-0.06);
+  ctx.textAlign = 'left';
+  outlinedText(ctx, `${c.count}連撃！`, 0, 0, `bold ${Math.round(size)}px ${SERIF}`, color, 'rgba(20,8,8,0.9)', 5);
+  // 残り時間ゲージ
+  ctx.fillStyle = 'rgba(10,8,14,0.6)';
+  rr(ctx, 2, 7, 64, 4, 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  const rt = Math.max(0, c.timer / 2.5);
+  rr(ctx, 2, 7, Math.max(2, 64 * rt), 4, 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 // ---------------- 下部パネル ----------------
 function drawPanel(ctx, state, ui, t) {
   ctx.fillStyle = vGrad(ctx, 0, PANEL_Y, WORLD.h - PANEL_Y, '#241b2e', '#160f1e');
   ctx.fillRect(0, PANEL_Y, WORLD.w, WORLD.h - PANEL_Y);
   ctx.fillStyle = P.gold;
   ctx.fillRect(0, PANEL_Y, WORLD.w, 1.5);
+
+  // 次波までのカウントダウンバー（減っていく朱色のバー）
+  if (state.status === 'playing' && state.nextWaveTimer > 0) {
+    const frac = state.nextWaveTimer / WAVE_INTERVAL;
+    ctx.fillStyle = 'rgba(13,9,18,0.7)';
+    ctx.fillRect(0, PANEL_Y - 4, WORLD.w, 4);
+    ctx.fillStyle = frac < 0.25 ? P.danger : P.vermilHi;
+    ctx.fillRect(0, PANEL_Y - 4, WORLD.w * frac, 4);
+  }
 
   const selected = ui.selectedTowerId != null
     ? state.towers.find((tw) => tw.id === ui.selectedTowerId)
@@ -1160,6 +1218,25 @@ function drawResultScreen(ctx, state, ui, t, mode) {
     ctx.fillStyle = P.goldHi;
     ctx.font = `bold 15px ${SANS}`;
     ctx.fillText(`SCORE ${state.score}　❤️ ${state.lives}`, WORLD.w / 2, 336);
+    ctx.fillStyle = P.dim;
+    ctx.font = `12px ${SANS}`;
+    ctx.fillText(`最大 ${state.maxCombo} 連撃`, WORLD.w / 2, 360);
+  } else if (state.endless) {
+    // エンドレスは敗北ではなく「記録」
+    ctx.save();
+    ctx.shadowColor = 'rgba(201,143,232,0.6)';
+    ctx.shadowBlur = 18;
+    outlinedText(ctx, '力尽きた…', WORLD.w / 2, 226, `bold 36px ${SERIF}`, '#d8b8f0', 'rgba(14,6,20,0.9)', 6);
+    ctx.restore();
+    ctx.fillStyle = P.cream;
+    ctx.font = `bold 17px ${SERIF}`;
+    ctx.fillText(`第${state.wave}波 まで到達`, WORLD.w / 2, 272);
+    ctx.font = `12px ${SANS}`;
+    ctx.fillStyle = P.dim;
+    ctx.fillText(`最大 ${state.maxCombo} 連撃`, WORLD.w / 2, 298);
+    ctx.fillStyle = P.goldHi;
+    ctx.font = `bold 15px ${SANS}`;
+    ctx.fillText(`SCORE ${state.score}`, WORLD.w / 2, 330);
   } else {
     outlinedText(ctx, '落 城', WORLD.w / 2, 232, `bold 40px ${SERIF}`, P.danger, 'rgba(20,4,8,0.9)', 6);
     ctx.fillStyle = P.cream;

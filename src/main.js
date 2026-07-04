@@ -1,113 +1,189 @@
-// main.js — ゲームループ＋入力処理。engine と renderer を繋ぐ唯一の場所。
+// src/main.js — ゲームループ（requestAnimationFrame）＋入力処理（Pointer Events）。
+// engine と renderer を繋ぐ唯一の場所。localStorage への進捗保存もここ。
+
 import {
-  chooseSkill,
-  createGame,
-  setPlayerTarget,
-  startGame,
-  update,
-  WORLD,
+  WORLD, MAPS, createState, update, startGame, toTitle, togglePause, cycleSpeed,
+  placeTower, upgradeTower, sellTower, startNextWave, pointToCell,
 } from './engine.js';
-import { render, skillCardRects } from './renderer.js';
+import { render } from './renderer.js';
+import { getButtons, hitButton } from './layout.js';
+import { initAudio, playSfx } from './sfx.js';
+
+const SAVE_KEY = 'mamori-td.progress.v1';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
-let state = createGame(Date.now() >>> 0);
-
-// テスト・デバッグ用に公開（smoke test が参照する）
-window.__game = {
-  get state() {
-    return state;
-  },
+const state = createState();
+const ui = {
+  buildType: null,
+  selectedTowerId: null,
+  hoverCell: null,
+  cleared: loadProgress(),
+  unlocked: 1,
 };
+refreshUnlocked();
 
-// ---- キャンバスのスケーリング（論理座標 360×640 固定） ----
+// ---------------- 進捗保存 ----------------
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    const data = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(data?.cleared)) return MAPS.map((_, i) => !!data.cleared[i]);
+  } catch { /* noop */ }
+  return MAPS.map(() => false);
+}
+
+function saveProgress() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ cleared: ui.cleared }));
+  } catch { /* noop */ }
+}
+
+function refreshUnlocked() {
+  let n = 1;
+  for (let i = 0; i < MAPS.length - 1 && ui.cleared[i]; i++) n = i + 2;
+  ui.unlocked = n;
+}
+
+// ---------------- キャンバスのスケーリング ----------------
 let scale = 1;
-let offsetX = 0;
-let offsetY = 0;
 
 function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  scale = Math.min(vw / WORLD.width, vh / WORLD.height);
-  const cssW = WORLD.width * scale;
-  const cssH = WORLD.height * scale;
-  canvas.style.width = `${cssW}px`;
-  canvas.style.height = `${cssH}px`;
-  canvas.width = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  scale = Math.min(window.innerWidth / WORLD.w, window.innerHeight / WORLD.h);
+  canvas.width = Math.round(WORLD.w * scale * dpr);
+  canvas.height = Math.round(WORLD.h * scale * dpr);
+  canvas.style.width = `${WORLD.w * scale}px`;
+  canvas.style.height = `${WORLD.h * scale}px`;
   ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
-  const rect = canvas.getBoundingClientRect();
-  offsetX = rect.left;
-  offsetY = rect.top;
 }
 window.addEventListener('resize', resize);
 resize();
 
-// クライアント座標 → 論理座標
-function toWorld(clientX, clientY) {
+function viewToWorld(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
-  return {
-    x: (clientX - rect.left) / scale,
-    y: (clientY - rect.top) / scale,
-  };
+  return { x: (clientX - rect.left) / scale, y: (clientY - rect.top) / scale };
 }
 
-// ---- 入力（Pointer Events） ----
-let dragging = false;
+// CSSピクセル（canvas左上基準）に変換。スモークテストからも使う。
+function worldToView(x, y) {
+  return { x: x * scale, y: y * scale };
+}
 
-canvas.addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  canvas.setPointerCapture(e.pointerId);
-  const p = toWorld(e.clientX, e.clientY);
-  if (state.status === 'title') {
-    startGame(state);
+// ---------------- 入力 ----------------
+canvas.addEventListener('pointerdown', (ev) => {
+  ev.preventDefault();
+  initAudio();
+  const pt = viewToWorld(ev.clientX, ev.clientY);
+  handleTap(pt.x, pt.y);
+});
+
+canvas.addEventListener('pointermove', (ev) => {
+  if (state.status !== 'playing' || !ui.buildType) return;
+  const pt = viewToWorld(ev.clientX, ev.clientY);
+  ui.hoverCell = pointToCell(pt.x, pt.y);
+});
+
+function handleTap(x, y) {
+  const button = hitButton(getButtons(state, ui), x, y);
+  if (button) {
+    onButton(button);
     return;
   }
-  if (state.status === 'gameover') {
-    state = createGame(Date.now() >>> 0);
-    startGame(state);
+  if (state.status !== 'playing') return;
+
+  const cell = pointToCell(x, y);
+  if (!cell) {
+    ui.selectedTowerId = null;
     return;
   }
-  if (state.status === 'skillSelect') {
-    const rects = skillCardRects(state.world);
-    const i = rects.findIndex(
-      (r) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h,
-    );
-    if (i !== -1) chooseSkill(state, i);
+
+  const tower = state.towers.find((t) => t.c === cell.c && t.r === cell.r);
+  if (tower) {
+    ui.selectedTowerId = tower.id;
+    ui.buildType = null;
     return;
   }
-  if (state.status === 'playing') {
-    dragging = true;
-    setPlayerTarget(state, p.x, p.y);
+  if (ui.buildType) {
+    ui.hoverCell = cell;
+    placeTower(state, ui.buildType, cell.c, cell.r);
+    return;
   }
-});
+  ui.selectedTowerId = null;
+}
 
-canvas.addEventListener('pointermove', (e) => {
-  e.preventDefault();
-  if (!dragging || state.status !== 'playing') return;
-  const p = toWorld(e.clientX, e.clientY);
-  setPlayerTarget(state, p.x, p.y);
-});
+function onButton(b) {
+  if (!b.enabled) return;
+  const id = b.id;
+  if (id.startsWith('map-')) {
+    startRun(Number(id.slice(4)));
+  } else if (id.startsWith('build-')) {
+    ui.buildType = ui.buildType === b.towerType ? null : b.towerType;
+    ui.selectedTowerId = null;
+    ui.hoverCell = null;
+  } else if (id === 'wave-start') {
+    startNextWave(state);
+  } else if (id === 'speed') {
+    cycleSpeed(state);
+  } else if (id === 'pause' || id === 'resume') {
+    togglePause(state);
+  } else if (id === 'upgrade') {
+    upgradeTower(state, ui.selectedTowerId);
+  } else if (id === 'sell') {
+    sellTower(state, ui.selectedTowerId);
+    ui.selectedTowerId = null;
+  } else if (id === 'close') {
+    ui.selectedTowerId = null;
+  } else if (id === 'retry') {
+    startRun(state.mapIndex);
+  } else if (id === 'to-title') {
+    toTitle(state);
+    resetUiSelection();
+  }
+}
 
-canvas.addEventListener('pointerup', (e) => {
-  e.preventDefault();
-  dragging = false;
-});
+function startRun(mapIndex) {
+  startGame(state, mapIndex);
+  resetUiSelection();
+}
 
-canvas.addEventListener('pointercancel', () => {
-  dragging = false;
-});
+function resetUiSelection() {
+  ui.buildType = null;
+  ui.selectedTowerId = null;
+  ui.hoverCell = null;
+}
 
-// ---- ゲームループ ----
-let lastTime = performance.now();
+// ---------------- イベント（効果音・進捗） ----------------
+function drainEvents() {
+  for (const ev of state.events) {
+    playSfx(ev);
+    if (ev === 'victory') {
+      ui.cleared[state.mapIndex] = true;
+      saveProgress();
+      refreshUnlocked();
+    }
+  }
+  state.events.length = 0;
+}
+
+// ---------------- ゲームループ ----------------
+let last = performance.now();
 
 function frame(now) {
-  const dt = Math.min((now - lastTime) / 1000, 0.1); // タブ復帰時の暴走防止
-  lastTime = now;
+  const dt = (now - last) / 1000;
+  last = now;
   update(state, dt);
-  render(ctx, state);
+  drainEvents();
+  render(ctx, state, ui);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// テスト・デバッグ用フック
+window.__game = {
+  state,
+  ui,
+  buttons: () => getButtons(state, ui),
+  worldToView,
+};

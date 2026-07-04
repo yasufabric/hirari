@@ -1,7 +1,7 @@
 {
   "name": "hirari",
-  "version": "0.1.0",
-  "description": "ひらり — スマホ向けドッジゲーム",
+  "version": "1.0.0",
+  "description": "城まもり！ — スマホ向け和風タワーディフェンス",
   "type": "module",
   "private": true,
   "scripts": {
